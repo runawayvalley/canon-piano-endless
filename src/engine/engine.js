@@ -1,12 +1,12 @@
 // The endless Canon engine. Pure JS, no audio: each call to next() returns one
 // cycle (2 bars = 8 chords = 8 beats) of note events. Same seed → same music.
-import { makeRng } from './rng.js?v=7';
+import { makeRng } from './rng.js?v=9';
 import {
   HOME, KEY_NAMES, GROUND, FAMOUS, DESCENT, mod12, tonicMidi, degToMidi,
   diatonicChord, pivotChord, nearestChordTone, chordTonesIn, chordToneAbove,
   chordToneBelow, isSemitoneClash,
-} from './theory.js?v=7';
-import { FIGURES } from './patterns.js?v=7';
+} from './theory.js?v=9';
+import { FIGURES } from './patterns.js?v=9';
 
 export const MODES = {
   calm: {

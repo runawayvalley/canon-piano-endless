@@ -1,7 +1,7 @@
 // Right-hand figures: how one skeleton note per beat becomes a rhythm.
 // Each figure turns (cur, next, chord) into notes inside one beat: {t, d, m, v}
 // t/d in beats (0 ≤ t < 1 within the beat), m = MIDI, v = relative velocity.
-import { scaleStep, chordToneAbove, chordToneBelow, mod12 } from './theory.js?v=7';
+import { scaleStep, chordToneAbove, chordToneBelow, mod12 } from './theory.js?v=9';
 
 const n = (t, d, m, v = 1) => ({ t, d, m, v });
 

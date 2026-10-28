@@ -1,7 +1,7 @@
-import { CanonEngine, MODES } from './engine/engine.js?v=7';
-import { randomSeed } from './engine/rng.js?v=7';
-import { CanonAudio } from './audio/audio.js?v=7';
-import { PianoRoll } from './ui/roll.js?v=7';
+import { CanonEngine, MODES } from './engine/engine.js?v=9';
+import { randomSeed } from './engine/rng.js?v=9';
+import { CanonAudio } from './audio/audio.js?v=9';
+import { PianoRoll } from './ui/roll.js?v=9';
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -46,7 +46,10 @@ function applyMusicOnly() {
   roll.setEnabled(!state.musicOnly);
 }
 applyMusicOnly();
-$('musicOnly').addEventListener('click', () => { state.musicOnly = !state.musicOnly; applyMusicOnly(); persist(); });
+$('musicOnly').addEventListener('click', (e) => {
+  state.musicOnly = !state.musicOnly; applyMusicOnly(); persist();
+  e.currentTarget.blur(); // so Space/Enter afterwards can't toggle it again by accident
+});
 
 // ---- UI wiring --------------------------------------------------------------
 const playBtn = $('play');
@@ -123,7 +126,10 @@ function applyMusicOnly() {
   roll.setEnabled(!state.musicOnly);
 }
 applyMusicOnly();
-$('musicOnly').addEventListener('click', () => { state.musicOnly = !state.musicOnly; applyMusicOnly(); persist(); });
+$('musicOnly').addEventListener('click', (e) => {
+  state.musicOnly = !state.musicOnly; applyMusicOnly(); persist();
+  e.currentTarget.blur(); // so Space/Enter afterwards can't toggle it again by accident
+});
   persist(); syncControls();
 }));
 
@@ -168,6 +174,11 @@ $('newSeed').addEventListener('click', () => {
   syncControls();
 });
 
+// stop the browser's own "Space clicks the focused button" on keyup
+document.addEventListener('keyup', (e) => {
+  if (e.code === 'Space' && document.activeElement?.tagName === 'BUTTON' && document.activeElement !== playBtn) e.preventDefault();
+});
+
 const drawer = $('drawer');
 $('drawerBtn').addEventListener('click', () => {
   drawer.hidden = !drawer.hidden;
@@ -175,8 +186,12 @@ $('drawerBtn').addEventListener('click', () => {
 });
 
 document.addEventListener('keydown', (e) => {
-  if (e.code === 'KeyM' && !['INPUT', 'SELECT'].includes(document.activeElement.tagName)) $('musicOnly').click();
-  if (e.code === 'Space' && !['INPUT', 'SELECT', 'BUTTON'].includes(document.activeElement.tagName)) {
+  if (e.repeat) return;
+  if (e.code === 'KeyM' && !e.ctrlKey && !e.metaKey && !e.altKey && !['INPUT', 'SELECT'].includes(document.activeElement.tagName)) {
+    e.preventDefault(); $('musicOnly').click();
+  }
+  // Space always means play/pause, even when another button still has focus
+  if (e.code === 'Space' && !['INPUT', 'SELECT'].includes(document.activeElement.tagName) && document.activeElement !== playBtn) {
     e.preventDefault(); playBtn.click();
   }
 });

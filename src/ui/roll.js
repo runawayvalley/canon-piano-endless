@@ -114,10 +114,15 @@ export class PianoRoll {
   setKey(pc) { this.keyPc = pc; }
 
   // Music only: stop drawing entirely (no canvas work at all while hidden)
+  // Notes keep arriving while hidden, so the roll is full the moment it comes back.
   setEnabled(on) {
     this.enabled = on;
-    this.notes.length = 0; this.particles.length = 0; this.ripples.length = 0;
-    if (!on) this.ctx.clearRect(0, 0, this.w, this.h);
+    this.particles.length = 0; this.ripples.length = 0;
+    for (const n of this.notes) n._hit = true; // no burst of stale sparks on return
+    const display = on ? '' : 'none';
+    this.canvas.style.display = display;
+    this.bgCanvas.style.display = display;
+    if (on) { this.resize(); this.last = performance.now(); }
   }
 
   // 'auto' | 'high' | 'low'
@@ -197,7 +202,13 @@ export class PianoRoll {
     }
   }
 
-  add(n) { if (this.enabled) this.notes.push(n); }
+  add(n) {
+    if (!this.enabled && this.notes.length > 600) {
+      const now = this.getNow();
+      this.notes = this.notes.filter((x) => x.time + x.dur > now - 0.5);
+    }
+    this.notes.push(n);
+  }
 
   _onHit(n, x) {
     if (n.inst !== 'piano' && n.inst !== 'backing') return;
