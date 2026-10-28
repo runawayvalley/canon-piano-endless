@@ -1,7 +1,7 @@
 // Audio: sampled piano + soft strings (Tone.js), and a look-ahead scheduler that
 // asks the engine for one cycle at a time and places every note on the audio clock.
 /* global Tone */
-import { NOTE_NAMES } from '../engine/theory.js?v=4';
+import { NOTE_NAMES } from '../engine/theory.js?v=5';
 
 const SALAMANDER = 'https://tonejs.github.io/audio/salamander/';
 const PIANO_NOTES = ['A1', 'C2', 'Ds2', 'Fs2', 'A2', 'C3', 'Ds3', 'Fs3', 'A3', 'C4', 'Ds4', 'Fs4',
@@ -26,12 +26,15 @@ export class CanonAudio {
     this.stringsVolume = 0.8;
     this.backingVolume = 0.8;
     this.volume = 0.85;
+    this.queue = []; // notes generated but not yet handed to the samplers
+    this.horizon = 4.5; // seconds of music generated ahead (lets the roll show notes falling in)
   }
 
   async init(onProgress = () => {}) {
+    // 'playback' asks the browser for bigger audio buffers: a little more latency
+    // (irrelevant for a generative stream) and far fewer crackles when the CPU is busy.
+    Tone.setContext(new Tone.Context({ latencyHint: 'playback', lookAhead: 0.1 }));
     await Tone.start();
-    const ctx = Tone.getContext();
-    ctx.lookAhead = 0.05;
 
     this.master = new Tone.Gain(this.volume);
     this.limiter = new Tone.Limiter(-1).toDestination();
@@ -68,6 +71,11 @@ export class CanonAudio {
   }
 
   get now() { return Tone.now(); }
+  // what the listener hears right now (audio clock minus output latency)
+  get heardNow() {
+    const raw = Tone.getContext().rawContext;
+    return raw.currentTime - (raw.outputLatency || raw.baseLatency || 0);
+  }
 
   start() {
     if (!this.ready) return;
@@ -78,7 +86,7 @@ export class CanonAudio {
     this.master.gain.rampTo(this.volume, 0.3);
     this.playing = true;
     this._tick();
-    this.timer = setInterval(() => this._tick(), 200);
+    this.timer = setInterval(() => this._tick(), 100);
   }
 
   // Pausing freezes the audio clock, so already-scheduled notes resume in place.
@@ -99,10 +107,20 @@ export class CanonAudio {
     return new Promise((r) => setTimeout(async () => { await this.pause(); r(); }, seconds * 1000));
   }
 
-  // keep about one cycle scheduled ahead of the clock
+  // Generate music a few seconds ahead, but hand notes to the samplers only ~0.8 s
+  // before they sound, a few at a time, so no single tick creates hundreds of nodes.
   _tick() {
     if (!this.playing) return;
-    while (this.nextCycleTime - this.now < 2.5) this._scheduleCycle();
+    while (this.nextCycleTime - this.now < this.horizon) this._scheduleCycle();
+    const until = this.now + 0.8;
+    let i = 0;
+    while (i < this.queue.length && this.queue[i].time < until) {
+      const q = this.queue[i++];
+      const inst = { piano: this.piano, violin: this.violin, cello: this.cello, backing: this.backing }[q.inst];
+      if (!inst) continue; // strings still loading
+      inst.triggerAttackRelease(q.name, q.hold, Math.max(this.now + 0.005, q.time), q.v);
+    }
+    if (i) this.queue.splice(0, i);
   }
 
   _scheduleCycle() {
@@ -121,13 +139,12 @@ export class CanonAudio {
     for (const n of cycle.notes) {
       const time = Math.max(this.now + 0.01, timeAt(n.t) + n.hum);
       const dur = Math.max(0.05, timeAt(n.t + n.d) - timeAt(n.t));
-      const inst = { piano: this.piano, violin: this.violin, cello: this.cello, backing: this.backing }[n.inst];
-      if (!inst) continue; // strings still loading
       // piano: a touch of pedal; strings: legato overlap
       const hold = n.inst === 'piano' ? dur * 1.15 : dur + 0.12;
-      inst.triggerAttackRelease(midiName(n.m), hold, time, n.v);
+      this.queue.push({ inst: n.inst, name: midiName(n.m), hold, time, v: n.v });
       this.onNote({ ...n, time, dur });
     }
+    this.queue.sort((a, b) => a.time - b.time);
     this.onCycle({ ...cycle, startTime: this.nextCycleTime, endTime: end });
     this.nextCycleTime = end;
   }

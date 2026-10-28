@@ -1,7 +1,7 @@
-import { CanonEngine, MODES } from './engine/engine.js?v=4';
-import { randomSeed } from './engine/rng.js?v=4';
-import { CanonAudio } from './audio/audio.js?v=4';
-import { PianoRoll } from './ui/roll.js?v=4';
+import { CanonEngine, MODES } from './engine/engine.js?v=5';
+import { randomSeed } from './engine/rng.js?v=5';
+import { CanonAudio } from './audio/audio.js?v=5';
+import { PianoRoll } from './ui/roll.js?v=5';
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -17,11 +17,12 @@ const state = {
   stringsVol: saved.stringsVol ?? 0.8,
   backing: saved.backing ?? false,
   backingVol: saved.backingVol ?? 0.8,
+  quality: saved.quality ?? 'auto',
 };
 state.bpm = saved.bpm?.[state.mode] ?? MODES[state.mode].bpm;
 const persist = () => localStorage.setItem('canon-endless', JSON.stringify({
   mode: state.mode, strings: state.strings, canon: state.canon, stayInD: state.stayInD,
-  volume: state.volume, stringsVol: state.stringsVol, backing: state.backing, backingVol: state.backingVol, bpm: { ...(saved.bpm || {}), [state.mode]: state.bpm },
+  volume: state.volume, stringsVol: state.stringsVol, backing: state.backing, backingVol: state.backingVol, quality: state.quality, bpm: { ...(saved.bpm || {}), [state.mode]: state.bpm },
 }));
 
 const makeEngine = () => new CanonEngine({
@@ -35,8 +36,9 @@ let audio = null;
 let startedAt = null;
 let sleepTimer = null;
 
-const roll = new PianoRoll($('roll'), () => (audio?.ready ? audio.now : 0));
+const roll = new PianoRoll($('roll'), () => (audio?.ready ? audio.heardNow : 0));
 roll.setMode(state.mode);
+roll.setQuality(state.quality);
 
 // ---- UI wiring --------------------------------------------------------------
 const playBtn = $('play');
@@ -56,6 +58,7 @@ function syncControls() {
   $('stayInD').checked = state.stayInD;
   $('backing').checked = state.backing;
   $('backingVol').value = state.backingVol;
+  $('quality').value = state.quality;
   $('seed').textContent = state.seed;
 }
 syncControls();
@@ -105,6 +108,7 @@ document.querySelectorAll('.modes button').forEach((b) => b.addEventListener('cl
   engine.setMode(state.mode);
   engine.bpm = state.bpm;
   roll.setMode(state.mode);
+roll.setQuality(state.quality);
   persist(); syncControls();
 }));
 
@@ -120,6 +124,7 @@ $('strings').addEventListener('change', (e) => {
 $('stringsVol').addEventListener('input', (e) => {
   state.stringsVol = Number(e.target.value); if (state.strings) audio?.setStringsVolume(state.stringsVol); persist();
 });
+$('quality').addEventListener('change', (e) => { state.quality = e.target.value; roll.setQuality(state.quality); persist(); });
 $('backing').addEventListener('change', (e) => { state.backing = e.target.checked; engine.setOptions({ backing: state.backing }); persist(); });
 $('backingVol').addEventListener('input', (e) => { state.backingVol = Number(e.target.value); audio?.setBackingVolume(state.backingVol); persist(); });
 $('canon').addEventListener('change', (e) => { state.canon = e.target.checked; engine.setOptions({ canon: state.canon }); persist(); });
@@ -174,7 +179,7 @@ const fmt = (s) => {
 };
 setInterval(() => {
   if (!audio?.ready || startedAt === null) return;
-  const now = audio.now;
+  const now = audio.heardNow;
   const cur = [...cycles].reverse().find((c) => c.startTime <= now);
   if (!cur) return;
   roll.setKey(cur.key);
