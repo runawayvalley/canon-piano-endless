@@ -72,11 +72,13 @@ export class PianoRoll {
     this.lastBg = -1;
     this.mode = 'calm';
     this.theme = THEMES.calm;
+    this.enabled = true;
     this.resize();
     addEventListener('resize', () => this.resize());
     this.last = performance.now();
     const loop = (t) => {
       const ms = t - this.last; this.last = t;
+      if (!this.enabled) { requestAnimationFrame(loop); return; }
       this._adapt(ms);
       this.draw(Math.min(0.05, ms / 1000), t / 1000);
       requestAnimationFrame(loop);
@@ -94,6 +96,13 @@ export class PianoRoll {
   }
 
   setKey(pc) { this.keyPc = pc; }
+
+  // Music only: stop drawing entirely (no canvas work at all while hidden)
+  setEnabled(on) {
+    this.enabled = on;
+    this.notes.length = 0; this.particles.length = 0; this.ripples.length = 0;
+    if (!on) this.ctx.clearRect(0, 0, this.w, this.h);
+  }
 
   // 'auto' | 'high' | 'low'
   setQuality(q) {
@@ -172,7 +181,7 @@ export class PianoRoll {
     }
   }
 
-  add(n) { this.notes.push(n); }
+  add(n) { if (this.enabled) this.notes.push(n); }
 
   _onHit(n, x) {
     if (n.inst !== 'piano' && n.inst !== 'backing') return;

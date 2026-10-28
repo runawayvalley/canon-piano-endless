@@ -1,7 +1,7 @@
-import { CanonEngine, MODES } from './engine/engine.js?v=5';
-import { randomSeed } from './engine/rng.js?v=5';
-import { CanonAudio } from './audio/audio.js?v=5';
-import { PianoRoll } from './ui/roll.js?v=5';
+import { CanonEngine, MODES } from './engine/engine.js?v=6';
+import { randomSeed } from './engine/rng.js?v=6';
+import { CanonAudio } from './audio/audio.js?v=6';
+import { PianoRoll } from './ui/roll.js?v=6';
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -18,11 +18,12 @@ const state = {
   backing: saved.backing ?? false,
   backingVol: saved.backingVol ?? 0.8,
   quality: saved.quality ?? 'auto',
+  musicOnly: saved.musicOnly ?? false,
 };
 state.bpm = saved.bpm?.[state.mode] ?? MODES[state.mode].bpm;
 const persist = () => localStorage.setItem('canon-endless', JSON.stringify({
   mode: state.mode, strings: state.strings, canon: state.canon, stayInD: state.stayInD,
-  volume: state.volume, stringsVol: state.stringsVol, backing: state.backing, backingVol: state.backingVol, quality: state.quality, bpm: { ...(saved.bpm || {}), [state.mode]: state.bpm },
+  volume: state.volume, stringsVol: state.stringsVol, backing: state.backing, backingVol: state.backingVol, quality: state.quality, musicOnly: state.musicOnly, bpm: { ...(saved.bpm || {}), [state.mode]: state.bpm },
 }));
 
 const makeEngine = () => new CanonEngine({
@@ -39,6 +40,13 @@ let sleepTimer = null;
 const roll = new PianoRoll($('roll'), () => (audio?.ready ? audio.heardNow : 0));
 roll.setMode(state.mode);
 roll.setQuality(state.quality);
+function applyMusicOnly() {
+  document.body.classList.toggle('music-only', state.musicOnly);
+  $('musicOnly').setAttribute('aria-pressed', String(state.musicOnly));
+  roll.setEnabled(!state.musicOnly);
+}
+applyMusicOnly();
+$('musicOnly').addEventListener('click', () => { state.musicOnly = !state.musicOnly; applyMusicOnly(); persist(); });
 
 // ---- UI wiring --------------------------------------------------------------
 const playBtn = $('play');
@@ -109,6 +117,13 @@ document.querySelectorAll('.modes button').forEach((b) => b.addEventListener('cl
   engine.bpm = state.bpm;
   roll.setMode(state.mode);
 roll.setQuality(state.quality);
+function applyMusicOnly() {
+  document.body.classList.toggle('music-only', state.musicOnly);
+  $('musicOnly').setAttribute('aria-pressed', String(state.musicOnly));
+  roll.setEnabled(!state.musicOnly);
+}
+applyMusicOnly();
+$('musicOnly').addEventListener('click', () => { state.musicOnly = !state.musicOnly; applyMusicOnly(); persist(); });
   persist(); syncControls();
 }));
 
@@ -160,6 +175,7 @@ $('drawerBtn').addEventListener('click', () => {
 });
 
 document.addEventListener('keydown', (e) => {
+  if (e.code === 'KeyM' && !['INPUT', 'SELECT'].includes(document.activeElement.tagName)) $('musicOnly').click();
   if (e.code === 'Space' && !['INPUT', 'SELECT', 'BUTTON'].includes(document.activeElement.tagName)) {
     e.preventDefault(); playBtn.click();
   }

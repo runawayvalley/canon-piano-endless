@@ -7,7 +7,7 @@
   <meta name="description" content="Pachelbel's Canon in D on piano and soft strings, generated forever in your browser. Never the same way twice." />
   <meta name="theme-color" content="#0d0f1a" />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎹</text></svg>" />
-  <link rel="stylesheet" href="style.css?v=5" />
+  <link rel="stylesheet" href="style.css?v=6" />
   <script src="https://cdn.jsdelivr.net/npm/tone@15.1.22/build/Tone.js"></script>
 </head>
 <body>
@@ -30,6 +30,8 @@
       <button data-mode="bright" role="radio" aria-checked="false">Bright</button>
       <button data-mode="masterpiece" role="radio" aria-checked="false">Masterpiece</button>
     </div>
+
+    <button id="musicOnly" class="music-only" type="button" aria-pressed="false" title="Hide the animation and just play (M)">Music only</button>
 
     <p id="info" class="info">&nbsp;</p>
   </main>
@@ -78,6 +80,6 @@
     </p>
   </aside>
 
-  <script type="module" src="src/main.js?v=5"></script>
+  <script type="module" src="src/main.js?v=6"></script>
 </body>
 </html>

@@ -1,7 +1,7 @@
 // Audio: sampled piano + soft strings (Tone.js), and a look-ahead scheduler that
 // asks the engine for one cycle at a time and places every note on the audio clock.
 /* global Tone */
-import { NOTE_NAMES } from '../engine/theory.js?v=5';
+import { NOTE_NAMES } from '../engine/theory.js?v=6';
 
 const SALAMANDER = 'https://tonejs.github.io/audio/salamander/';
 const PIANO_NOTES = ['A1', 'C2', 'Ds2', 'Fs2', 'A2', 'C3', 'Ds3', 'Fs3', 'A3', 'C4', 'Ds4', 'Fs4',
@@ -112,7 +112,8 @@ export class CanonAudio {
   _tick() {
     if (!this.playing) return;
     while (this.nextCycleTime - this.now < this.horizon) this._scheduleCycle();
-    const until = this.now + 0.8;
+    // hidden tabs throttle timers to about once a second: feed further ahead there
+    const until = this.now + (document.hidden ? 3 : 0.8);
     let i = 0;
     while (i < this.queue.length && this.queue[i].time < until) {
       const q = this.queue[i++];
