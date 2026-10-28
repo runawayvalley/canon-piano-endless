@@ -1,7 +1,7 @@
 // Audio: sampled piano + soft strings (Tone.js), and a look-ahead scheduler that
 // asks the engine for one cycle at a time and places every note on the audio clock.
 /* global Tone */
-import { NOTE_NAMES } from '../engine/theory.js';
+import { NOTE_NAMES } from '../engine/theory.js?v=4';
 
 const SALAMANDER = 'https://tonejs.github.io/audio/salamander/';
 const PIANO_NOTES = ['A1', 'C2', 'Ds2', 'Fs2', 'A2', 'C3', 'Ds3', 'Fs3', 'A3', 'C4', 'Ds4', 'Fs4',
