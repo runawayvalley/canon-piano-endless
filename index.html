@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Canon · Endless</title>
+  <meta name="description" content="Pachelbel's Canon in D on piano and soft strings, generated forever in your browser. Never the same way twice." />
+  <meta name="theme-color" content="#0d0f1a" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎹</text></svg>" />
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/tone@15.1.22/build/Tone.js"></script>
+</head>
+<body>
+  <canvas id="roll" aria-hidden="true"></canvas>
+
+  <main class="stage">
+    <header class="title">
+      <h1>Canon <span>· Endless</span></h1>
+      <p>Pachelbel's Canon in D, piano &amp; soft strings, never the same way twice.</p>
+    </header>
+
+    <button id="play" class="play" aria-label="Play">
+      <svg class="icon-play" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+      <svg class="icon-pause" viewBox="0 0 24 24"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>
+    </button>
+    <p id="status" class="status">Press play</p>
+
+    <div class="modes" role="radiogroup" aria-label="Mode">
+      <button data-mode="calm" role="radio" aria-checked="true" class="on">Calm / Focus</button>
+      <button data-mode="bright" role="radio" aria-checked="false">Bright</button>
+    </div>
+
+    <p id="info" class="info">&nbsp;</p>
+  </main>
+
+  <button id="drawerBtn" class="drawer-btn" aria-label="Settings" aria-expanded="false">
+    <svg viewBox="0 0 24 24"><path d="M3 6h18M3 12h18M3 18h18" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
+  </button>
+
+  <aside id="drawer" class="drawer" hidden>
+    <h2>Settings</h2>
+    <label class="row">Tempo <output id="tempoOut">56</output>
+      <input id="tempo" type="range" min="50" max="80" step="1" value="56" />
+    </label>
+    <label class="row">Volume
+      <input id="volume" type="range" min="0" max="1" step="0.01" value="0.85" />
+    </label>
+    <label class="row check"><input id="strings" type="checkbox" checked /> Soft strings</label>
+    <label class="row">Strings volume
+      <input id="stringsVol" type="range" min="0" max="1" step="0.01" value="0.8" />
+    </label>
+    <label class="row check"><input id="canon" type="checkbox" checked /> Canon voices</label>
+    <label class="row check"><input id="stayInD" type="checkbox" /> Stay in D (no key changes)</label>
+    <label class="row">Sleep timer
+      <select id="sleep">
+        <option value="0">Off</option>
+        <option value="15">15 min</option>
+        <option value="30">30 min</option>
+        <option value="60">60 min</option>
+      </select>
+    </label>
+    <div class="row seed">
+      <span>Performance <code id="seed">—</code></span>
+      <button id="share" type="button">Copy link</button>
+      <button id="newSeed" type="button">New</button>
+    </div>
+    <p class="credits">
+      Piano: Salamander Grand Piano (Alexander Holm, CC-BY 3.0). Strings: VSCO 2 Community Edition (CC0).
+      Audio: Tone.js. <a href="https://github.com/runawayvalley/canon-piano-endless" target="_blank" rel="noopener">Source</a>
+    </p>
+  </aside>
+
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>
