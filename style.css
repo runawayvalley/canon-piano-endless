@@ -91,3 +91,6 @@ body[data-mode="extreme"] { --gold: #ff7a5c; }
 }
 .credits { color: var(--muted); font-size: 12px; line-height: 1.5; margin-top: 24px; }
 .credits a { color: var(--gold); }
+/* keep text readable over dense falling notes (Extreme) */
+.title, .status, .info { text-shadow: 0 1px 8px rgba(0, 0, 0, 0.9), 0 0 2px rgba(0, 0, 0, 0.9); }
+.modes button, .music-only { background-color: rgba(10, 10, 18, 0.55); }
