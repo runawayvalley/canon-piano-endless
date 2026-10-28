@@ -1,7 +1,7 @@
-import { CanonEngine, MODES } from './engine/engine.js?v=9';
-import { randomSeed } from './engine/rng.js?v=9';
-import { CanonAudio } from './audio/audio.js?v=9';
-import { PianoRoll } from './ui/roll.js?v=9';
+import { CanonEngine, MODES } from './engine/engine.js?v=10';
+import { randomSeed } from './engine/rng.js?v=10';
+import { CanonAudio } from './audio/audio.js?v=10';
+import { PianoRoll } from './ui/roll.js?v=10';
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -119,17 +119,6 @@ document.querySelectorAll('.modes button').forEach((b) => b.addEventListener('cl
   engine.setMode(state.mode);
   engine.bpm = state.bpm;
   roll.setMode(state.mode);
-roll.setQuality(state.quality);
-function applyMusicOnly() {
-  document.body.classList.toggle('music-only', state.musicOnly);
-  $('musicOnly').setAttribute('aria-pressed', String(state.musicOnly));
-  roll.setEnabled(!state.musicOnly);
-}
-applyMusicOnly();
-$('musicOnly').addEventListener('click', (e) => {
-  state.musicOnly = !state.musicOnly; applyMusicOnly(); persist();
-  e.currentTarget.blur(); // so Space/Enter afterwards can't toggle it again by accident
-});
   persist(); syncControls();
 }));
 

@@ -152,3 +152,13 @@ test('extreme: reaches 6 voices, denser than masterpiece, no unison doubling', (
     }
   }
 });
+
+test('main.js wires each control once (no listeners added inside other handlers)', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const src = await readFile(new URL('../src/main.js', import.meta.url), 'utf8');
+  for (const id of ['musicOnly', 'quality', 'backing', 'play', 'drawerBtn']) {
+    const n = src.split(`$('${id}').addEventListener`).length - 1 + src.split(`${id}Btn.addEventListener`).length - 1;
+    assert.ok(n <= 1, `${id} wired ${n} times`);
+  }
+  assert.equal(src.split('function applyMusicOnly').length - 1, 1);
+});
