@@ -2,6 +2,7 @@
 //  calm:        soft halo, drifting dust, night-blue sky
 //  bright:      warm gold, sparks burst from notes as they land
 //  masterpiece: aurora ribbons overhead, ripples on every hit, jewel colours
+//  extreme:     fast fall, ember-red aurora, heavy sparks, a pulse on every bass hit
 //
 // Performance notes: no shadowBlur (it blurs every note on every frame), the sky and
 // aurora are painted on a quarter-resolution canvas behind the notes, the keyboard is
@@ -35,13 +36,28 @@ const THEMES = {
     seconds: 3,
     bg: ['#1a1030', '#07060f'],
     colors: {
-      rh: [255, 210, 120], lh: [110, 140, 255], c2: [255, 120, 170], c3: [90, 220, 200], c4: [245, 245, 255],
+      rh: [255, 210, 120], lh: [110, 140, 255], c2: [255, 120, 170], c3: [90, 220, 200], c4: [245, 245, 255], c5: [200, 160, 255], c6: [160, 255, 200],
       pad: [160, 110, 255], bass: [90, 80, 200], vln: [255, 190, 230], backing: [120, 90, 230],
     },
     halo: 0.2,
     ripples: true,
     aurora: true,
     sparks: 2,
+  },
+  extreme: {
+    seconds: 2.5,
+    bg: ['#2a0a14', '#070308'],
+    colors: {
+      rh: [255, 120, 80], lh: [255, 60, 90], c2: [255, 190, 70], c3: [80, 220, 255], c4: [255, 255, 255],
+      c5: [190, 110, 255], c6: [120, 255, 170],
+      pad: [255, 80, 120], bass: [200, 40, 80], vln: [255, 170, 120], backing: [230, 50, 70],
+    },
+    halo: 0.22,
+    ripples: true,
+    aurora: true,
+    auroraHue: 350,
+    sparks: 4,
+    pulse: true,
   },
 };
 for (const th of Object.values(THEMES)) {
@@ -161,7 +177,7 @@ export class PianoRoll {
     bg.fillStyle = g; bg.fillRect(0, 0, w, h);
     if (!th.aurora) return;
     bg.globalCompositeOperation = 'lighter';
-    const baseHue = (this.keyPc * 30 + 260) % 360;
+    const baseHue = th.auroraHue != null ? (th.auroraHue + this.keyPc * 4) % 360 : (this.keyPc * 30 + 260) % 360;
     for (let i = 0; i < 3; i++) {
       const hue = (baseHue + i * 40 + Math.sin(t * 0.05 + i) * 20) % 360;
       const yBase = h * (0.16 + i * 0.09);
@@ -197,6 +213,7 @@ export class PianoRoll {
       }
       if (this.particles.length > 220) this.particles.splice(0, this.particles.length - 220);
     }
+    if (th.pulse && (n.voice === 'lh' || n.voice === 'backing') && n.v > 0.4) this.flash = Math.max(this.flash || 0, this.low ? 0.04 : 0.08);
     if (th.ripples && (!this.low || n.voice === 'rh')) {
       this.ripples.push({ x, y: this.hitY, age: 0, life: 1.2, max: 30 + 80 * n.v, col });
       if (this.ripples.length > 60) this.ripples.splice(0, this.ripples.length - 60);
@@ -247,7 +264,7 @@ export class PianoRoll {
         const hgt = Math.max(2, Math.min(hitY, y1) - top);
         ctx.fillStyle = th.css[n.voice] || th.css.rh;
         if (isStr) {
-          const wide = n.voice === 'vln' && this.mode === 'masterpiece' ? 2.2 : 4;
+          const wide = n.voice === 'vln' && (this.mode === 'masterpiece' || this.mode === 'extreme') ? 2.2 : 4;
           ctx.globalAlpha = 0.05 + n.v * 0.12;
           ctx.fillRect(x - keyW * (wide - 1) / 2, top, keyW * wide, hgt);
         } else {
@@ -293,6 +310,15 @@ export class PianoRoll {
       if (this.frame % 10 === 0) this.particles = this.particles.filter((p) => p.age < p.life);
     }
     ctx.globalAlpha = 1;
+
+    // bass pulse (extreme): one translucent wash, fading fast
+    if (this.flash > 0.005) {
+      ctx.globalAlpha = this.flash;
+      ctx.fillStyle = th.css.lh;
+      ctx.fillRect(0, 0, w, hitY);
+      ctx.globalAlpha = 1;
+      this.flash *= Math.exp(-dt * 8);
+    }
 
     // keyboard: cached keys, then only the lit ones
     ctx.drawImage(this.keysCanvas, 0, hitY, w, this.keyH);

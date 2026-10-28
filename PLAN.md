@@ -39,6 +39,7 @@ Switching mode mid-play takes effect at the next cycle boundary with a 1-cycle c
 
 ### Added after v1
 - **Masterpiece mode:** energy 3–5, 62 BPM, up to 4 canon voices (2, 4 and 6 bars behind), mixed figures, violins sing the famous line or Pachelbel's descent as a counter-melody, key changes every 16–28 cycles.
+- **Extreme mode:** energy 4–5, 70 BPM, up to 6 canon voices (5 usually; voices 5–6 from 8 and 10 bars back, an octave below/above), no unison doubling, key changes every 12–20 cycles; ember-red visuals with a pulse on bass hits.
 - **Backing track (optional):** the ground bass on cello (plus a low octave) on every beat from the first cycle, own volume; replaces the strings' cello layer when on.
 - **Per-mode animation:** Calm = slow 6 s fall, soft glow, drifting dust; Bright = warm gold, sparks from every landing note; Masterpiece = fast fall, aurora ribbons tinted by key, ripples on every hit.
 

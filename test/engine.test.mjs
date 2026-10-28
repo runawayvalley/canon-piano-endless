@@ -17,7 +17,7 @@ test('same seed gives the same performance', () => {
   assert.notDeepEqual(a, c);
 });
 
-for (const mode of ['calm', 'bright', 'masterpiece']) {
+for (const mode of ['calm', 'bright', 'masterpiece', 'extreme']) {
   test(`${mode}: ground bass on every beat for 1,000 cycles`, () => {
     for (const c of run({ seed: 7, mode }, 1000)) {
       for (let b = 0; b < 8; b++) {
@@ -124,7 +124,7 @@ test('masterpiece: up to 4 voices, violin counter-lines, more than bright', () =
 });
 
 test('backing track: bassline on every beat, from the first cycle, in every mode', () => {
-  for (const mode of ['calm', 'bright', 'masterpiece']) {
+  for (const mode of ['calm', 'bright', 'masterpiece', 'extreme']) {
     for (const c of run({ seed: 17, mode, backing: true }, 300)) {
       for (let b = 0; b < 8; b++) {
         assert.ok(c.notes.some((n) => n.voice === 'backing' && Math.abs(n.t - b) < 1e-6 && n.m === c.bass[b]), `${mode} ${c.index} ${b}`);
@@ -133,4 +133,22 @@ test('backing track: bassline on every beat, from the first cycle, in every mode
     }
   }
   assert.ok(!run({ seed: 17 }, 50).some((c) => c.notes.some((n) => n.voice === 'backing')), 'off by default');
+});
+
+test('extreme: reaches 6 voices, denser than masterpiece, no unison doubling', () => {
+  const ex = run({ seed: 21, mode: 'extreme' }, 1000);
+  const mp = run({ seed: 21, mode: 'masterpiece' }, 1000);
+  assert.ok(ex.some((c) => c.voices === 6), 'six voices appear');
+  assert.ok(ex.every((c) => c.voices <= 6));
+  const avg = (cs) => cs.reduce((s, c) => s + c.voices, 0) / cs.length;
+  assert.ok(avg(ex) > avg(mp), `extreme ${avg(ex)} vs masterpiece ${avg(mp)}`);
+  assert.ok(ex.filter((c) => c.voices >= 5).length > 300, `mostly 5-6 voices: ${ex.filter((c) => c.voices >= 5).length}`);
+  for (const c of ex) {
+    const seen = new Set();
+    for (const n of c.notes.filter((n) => n.inst === 'piano' && /^c\d$/.test(n.voice))) {
+      const k = `${n.t.toFixed(4)}:${n.m}`;
+      assert.ok(!seen.has(k), `doubling in cycle ${c.index}`);
+      seen.add(k);
+    }
+  }
 });

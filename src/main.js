@@ -1,7 +1,7 @@
-import { CanonEngine, MODES } from './engine/engine.js?v=6';
-import { randomSeed } from './engine/rng.js?v=6';
-import { CanonAudio } from './audio/audio.js?v=6';
-import { PianoRoll } from './ui/roll.js?v=6';
+import { CanonEngine, MODES } from './engine/engine.js?v=7';
+import { randomSeed } from './engine/rng.js?v=7';
+import { CanonAudio } from './audio/audio.js?v=7';
+import { PianoRoll } from './ui/roll.js?v=7';
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);

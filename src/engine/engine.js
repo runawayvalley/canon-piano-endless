@@ -1,12 +1,12 @@
 // The endless Canon engine. Pure JS, no audio: each call to next() returns one
 // cycle (2 bars = 8 chords = 8 beats) of note events. Same seed → same music.
-import { makeRng } from './rng.js?v=6';
+import { makeRng } from './rng.js?v=7';
 import {
   HOME, KEY_NAMES, GROUND, FAMOUS, DESCENT, mod12, tonicMidi, degToMidi,
   diatonicChord, pivotChord, nearestChordTone, chordTonesIn, chordToneAbove,
   chordToneBelow, isSemitoneClash,
-} from './theory.js?v=6';
-import { FIGURES } from './patterns.js?v=6';
+} from './theory.js?v=7';
+import { FIGURES } from './patterns.js?v=7';
 
 export const MODES = {
   calm: {
@@ -20,6 +20,10 @@ export const MODES = {
   masterpiece: {
     label: 'Masterpiece', lo: 3, hi: 5, bpm: 62, maxVoices: 4, allow16: true,
     waveMin: [4, 6], modEvery: [16, 28], violins: true, voiceAt: [3.1, 3.7, 4.3], mix: 0.7, counter: true,
+  },
+  extreme: {
+    label: 'Extreme', lo: 4, hi: 5, bpm: 70, maxVoices: 6, allow16: true,
+    waveMin: [3, 4], modEvery: [12, 20], violins: true, voiceAt: [4.0, 4.0, 4.1, 4.25, 4.4], mix: 0.85, counter: true,
   },
 };
 
@@ -256,6 +260,7 @@ export class CanonEngine {
       if (m < 52 || m > 96) continue;
       const strong = Math.abs(x.t - Math.round(x.t)) < 1e-6 || Math.abs(x.t % 1 - 0.5) < 1e-6;
       if (strong && against.some((y) => y.t <= x.t + 1e-6 && x.t < y.t + y.d - 1e-6 && isSemitoneClash(y.m, m))) continue;
+      if (against.some((y) => y.m === m && Math.abs(y.t - x.t) < 1e-6)) continue; // no unison doubling
       out.push({ t: x.t, d: x.d, m, v: x.v * velScale });
     }
     return out;
@@ -341,9 +346,13 @@ export class CanonEngine {
     let c2 = [];
     let c3 = [];
     let c4 = [];
+    let c5 = [];
+    let c6 = [];
     if (nVoices >= 2) c2 = this._canonVoice(this.history[0], rh, chords, -12, mod, 0.62);
     if (nVoices >= 3) c3 = this._canonVoice(this.history[1], rh.concat(c2), chords, 0, mod, 0.5);
     if (nVoices >= 4) c4 = this._canonVoice(this.history[2], rh.concat(c2, c3), chords, 12, mod, 0.42);
+    if (nVoices >= 5) c5 = this._canonVoice(this.history[3], rh.concat(c2, c3, c4), chords, -12, mod, 0.36);
+    if (nVoices >= 6) c6 = this._canonVoice(this.history[4], rh.concat(c2, c3, c4, c5), chords, 12, mod, 0.32);
 
     // optional backing track: the Canon's bassline on cello, every cycle, legato
     const backing = [];
@@ -380,6 +389,8 @@ export class CanonEngine {
     push(c2, 'piano', 'c2', 1);
     push(c3, 'piano', 'c3', 1);
     push(c4, 'piano', 'c4', 1);
+    push(c5, 'piano', 'c5', 1);
+    push(c6, 'piano', 'c6', 1);
     for (const x of backing) notes.push({ ...x, v: Math.min(1, x.v), hum: r.range(-0.008, 0.008) });
     for (const s of strings) notes.push({ ...s, v: Math.min(1, s.v * (0.7 + 0.1 * this.energy)), hum: r.range(-0.015, 0.015) });
 
@@ -390,7 +401,7 @@ export class CanonEngine {
       mode: this.mode,
       energy: this.energy,
       level,
-      voices: 1 + (c2.length ? 1 : 0) + (c3.length ? 1 : 0) + (c4.length ? 1 : 0),
+      voices: 1 + [c2, c3, c4, c5, c6].filter((c) => c.length).length,
       famous: skel.type === 'famous',
       skeleton: skel.type,
       figures: figs.map((f) => f.name),
@@ -404,7 +415,7 @@ export class CanonEngine {
 
     // remember this line for the canon
     this.history.unshift({ notes: rh, tonic: tonicMidi(this.key), pivotBeats: mod ? [6, 7] : [] });
-    this.history.length = Math.min(this.history.length, 3);
+    this.history.length = Math.min(this.history.length, 5);
 
     // advance key
     if (mod) {
