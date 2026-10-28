@@ -14,7 +14,7 @@ A seeded generative engine (`src/engine/`) writes one cycle at a time: 2 bars, 8
 - **Key journeys:** prepared modulations (♭VI–♭VII lift or IV–V7) to E♭, F, G or B♭, always back to D within ~10 minutes. Toggle *Stay in D* to turn them off.
 - **Modes:** *Calm / Focus* (gentle, no sixteenths, quiet string pad), *Bright* (runs, 3-voice canon, cello and violins at the peaks) *Masterpiece* (up to 4 canon voices, violin counter-melodies, always full) and *Extreme* (70 BPM, up to 6 canon voices, frequent key changes). Each mode has its own look: drifting dust and soft glow, golden sparks, or aurora ribbons with ripples.
 - **Music only:** one tap (or M) hides the animation and stops all drawing, for background listening; audio keeps playing smoothly in a background tab.
-- **Backing track:** optional Canon bassline on cello under everything, with its own volume.
+- **Backing track:** optional Canon bassline on cello an octave above the piano's left hand (legato in Calm, driving eighths in the other modes) plus a sub-octave for headphones, with its own volume.
 - **Seeds:** the same seed plays the same performance. Copy a link from Settings to share one.
 
 ## Run locally

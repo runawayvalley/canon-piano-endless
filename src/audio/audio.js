@@ -1,7 +1,7 @@
 // Audio: sampled piano + soft strings (Tone.js), and a look-ahead scheduler that
 // asks the engine for one cycle at a time and places every note on the audio clock.
 /* global Tone */
-import { NOTE_NAMES } from '../engine/theory.js?v=10';
+import { NOTE_NAMES } from '../engine/theory.js?v=11';
 
 const SALAMANDER = 'https://tonejs.github.io/audio/salamander/';
 const PIANO_NOTES = ['A1', 'C2', 'Ds2', 'Fs2', 'A2', 'C3', 'Ds3', 'Fs3', 'A3', 'C4', 'Ds4', 'Fs4',
@@ -49,8 +49,10 @@ export class CanonAudio {
     this.stringBus = new Tone.Gain(this.stringsVolume).connect(this.master);
     this.stringSend = new Tone.Gain(0.5).connect(this.reverb);
     this.stringBus.connect(this.stringSend);
-    this.backingBus = new Tone.Gain(this.backingVolume).connect(this.master);
-    this.backingBus.connect(this.stringSend);
+    // backing slider 0..1 maps to gain 0..1.6 so full volume clearly stands out
+    this.backingBus = new Tone.Gain(this.backingVolume * 1.6).connect(this.master);
+    this.backingSend = new Tone.Gain(0.25).connect(this.reverb);
+    this.backingBus.connect(this.backingSend);
 
     onProgress('Loading piano…');
     this.piano = await loadSampler(urlMap(PIANO_NOTES, (n) => `${n}.mp3`), SALAMANDER, { release: 1.2 });
@@ -62,7 +64,7 @@ export class CanonAudio {
     Promise.all([
       loadSampler(urlMap(VIOLIN_NOTES, (n) => `violin_${n}.mp3`), base, { attack: 0.7, release: 1.8 }),
       loadSampler(urlMap(CELLO_NOTES, (n) => `cello_${n}.mp3`), base, { attack: 0.5, release: 1.6 }),
-      loadSampler(urlMap(CELLO_NOTES, (n) => `cello_${n}.mp3`), base, { attack: 0.25, release: 1.2 }),
+      loadSampler(urlMap(CELLO_NOTES, (n) => `cello_${n}.mp3`), base, { attack: 0.02, release: 0.45 }),
     ]).then(([violin, cello, backing]) => {
       this.violin = violin; this.cello = cello; this.backing = backing;
       violin.connect(this.stringBus); cello.connect(this.stringBus); backing.connect(this.backingBus);
@@ -99,7 +101,7 @@ export class CanonAudio {
   }
 
   setVolume(v) { this.volume = v; if (this.playing) this.master.gain.rampTo(v, 0.1); }
-  setBackingVolume(v) { this.backingVolume = v; if (this.backingBus) this.backingBus.gain.rampTo(v, 0.2); }
+  setBackingVolume(v) { this.backingVolume = v; if (this.backingBus) this.backingBus.gain.rampTo(v * 1.6, 0.2); }
   setStringsVolume(v) { this.stringsVolume = v; if (this.stringBus) this.stringBus.gain.rampTo(v, 0.2); }
 
   fadeOutAndPause(seconds = 20) {

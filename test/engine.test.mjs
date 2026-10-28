@@ -123,11 +123,11 @@ test('masterpiece: up to 4 voices, violin counter-lines, more than bright', () =
   for (const c of mp) assert.ok(c.level >= 3 || c.index < 6);
 });
 
-test('backing track: bassline on every beat, from the first cycle, in every mode', () => {
+test('backing track: bassline (octave above the piano bass) on every beat, from the first cycle, in every mode', () => {
   for (const mode of ['calm', 'bright', 'masterpiece', 'extreme']) {
     for (const c of run({ seed: 17, mode, backing: true }, 300)) {
       for (let b = 0; b < 8; b++) {
-        assert.ok(c.notes.some((n) => n.voice === 'backing' && Math.abs(n.t - b) < 1e-6 && n.m === c.bass[b]), `${mode} ${c.index} ${b}`);
+        assert.ok(c.notes.some((n) => n.voice === 'backing' && Math.abs(n.t - b) < 1e-6 && n.m === (c.bass[b] + 12 <= 64 ? c.bass[b] + 12 : c.bass[b])), `${mode} ${c.index} ${b}`);
       }
       assert.ok(!c.notes.some((n) => n.voice === 'bass'), 'no doubled string cello when backing is on');
     }
@@ -161,4 +161,16 @@ test('main.js wires each control once (no listeners added inside other handlers)
     assert.ok(n <= 1, `${id} wired ${n} times`);
   }
   assert.equal(src.split('function applyMusicOnly').length - 1, 1);
+});
+
+test('backing track is audibly distinct: never just doubles the piano left hand', () => {
+  for (const mode of ['calm', 'bright', 'masterpiece', 'extreme']) {
+    for (const c of run({ seed: 31, mode, backing: true }, 200)) {
+      const lh = new Set(c.notes.filter((n) => n.voice === 'lh').map((n) => `${n.t}:${n.m}`));
+      const back = c.notes.filter((n) => n.voice === 'backing');
+      const doubled = back.filter((n) => lh.has(`${n.t}:${n.m}`)).length;
+      assert.ok(doubled / back.length < 0.2, `${mode} cycle ${c.index}: ${doubled}/${back.length} doubled`);
+      assert.ok(back.every((n) => n.m >= 24 && n.m <= 64));
+    }
+  }
 });

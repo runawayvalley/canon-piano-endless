@@ -1,12 +1,12 @@
 // The endless Canon engine. Pure JS, no audio: each call to next() returns one
 // cycle (2 bars = 8 chords = 8 beats) of note events. Same seed → same music.
-import { makeRng } from './rng.js?v=10';
+import { makeRng } from './rng.js?v=11';
 import {
   HOME, KEY_NAMES, GROUND, FAMOUS, DESCENT, mod12, tonicMidi, degToMidi,
   diatonicChord, pivotChord, nearestChordTone, chordTonesIn, chordToneAbove,
   chordToneBelow, isSemitoneClash,
-} from './theory.js?v=10';
-import { FIGURES } from './patterns.js?v=10';
+} from './theory.js?v=11';
+import { FIGURES } from './patterns.js?v=11';
 
 export const MODES = {
   calm: {
@@ -354,15 +354,25 @@ export class CanonEngine {
     if (nVoices >= 5) c5 = this._canonVoice(this.history[3], rh.concat(c2, c3, c4), chords, -12, mod, 0.36);
     if (nVoices >= 6) c6 = this._canonVoice(this.history[4], rh.concat(c2, c3, c4, c5), chords, 12, mod, 0.32);
 
-    // optional backing track: the Canon's bassline on cello, every cycle, legato
+    // optional backing track: the Canon's bassline on cello, one octave above the
+    // piano's left hand (so it is heard as its own part, even on laptop speakers),
+    // plus a deep sub-octave underneath for headphones. Calm sings it in legato
+    // quarters; the other modes drive it in eighths like a pop-style backing.
     const backing = [];
     if (this.backing) {
+      const e = this.energy;
       for (let b = 0; b < 8; b++) {
-        backing.push({ t: b, d: 1, m: bass[b], v: 0.62 + 0.04 * this.energy, inst: 'backing', voice: 'backing' });
-        let low = bass[b] - 12;
-        if (low >= 36) backing.push({ t: b, d: 1, m: low, v: 0.45 + 0.03 * this.energy, inst: 'backing', voice: 'backing' });
+        const mid = bass[b] + 12 <= 64 ? bass[b] + 12 : bass[b];
+        if (this.mode === 'calm') {
+          backing.push({ t: b, d: 1, m: mid, v: 0.6 + 0.05 * e, inst: 'backing', voice: 'backing' });
+        } else {
+          backing.push({ t: b, d: 0.5, m: mid, v: 0.68 + 0.05 * e, inst: 'backing', voice: 'backing' });
+          backing.push({ t: b + 0.5, d: 0.5, m: mid, v: 0.5 + 0.04 * e, inst: 'backing', voice: 'backing' });
+        }
+        if (bass[b] - 12 >= 24) backing.push({ t: b, d: 1, m: bass[b] - 12, v: 0.5 + 0.04 * e, inst: 'backing', voice: 'backing' });
       }
     }
+
 
     const strings = this._strings(chords, bass, level, mod, skel);
 
@@ -385,7 +395,9 @@ export class CanonEngine {
       }
     };
     push(rh, 'piano', 'rh', 1.05);
-    push(lh.notes, 'piano', 'lh', 0.85);
+    // with the backing on, the cello takes over any left-hand note it would double
+    const backKey = new Set(backing.map((x) => `${x.t}:${x.m}`));
+    push(backing.length ? lh.notes.filter((x) => !backKey.has(`${x.t}:${x.m}`)) : lh.notes, 'piano', 'lh', 0.85);
     push(c2, 'piano', 'c2', 1);
     push(c3, 'piano', 'c3', 1);
     push(c4, 'piano', 'c4', 1);
