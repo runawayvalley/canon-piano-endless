@@ -12,7 +12,8 @@ A seeded generative engine (`src/engine/`) writes one cycle at a time: 2 bars, 8
 - **Energy waves:** energy drifts slowly between quiet and full, choosing figures, left-hand style, canon voices and strings.
 - **Canon:** at higher energy a second (and in Bright, third) voice replays the line from 2 bars earlier, with strong-beat semitone clashes removed.
 - **Key journeys:** prepared modulations (♭VI–♭VII lift or IV–V7) to E♭, F, G or B♭, always back to D within ~10 minutes. Toggle *Stay in D* to turn them off.
-- **Modes:** *Calm / Focus* (gentle, no sixteenths, quiet string pad) and *Bright* (runs, 3-voice canon, cello and violins at the peaks).
+- **Modes:** *Calm / Focus* (gentle, no sixteenths, quiet string pad), *Bright* (runs, 3-voice canon, cello and violins at the peaks) and *Masterpiece* (up to 4 canon voices, violin counter-melodies, always full). Each mode has its own look: drifting dust and soft glow, golden sparks, or aurora ribbons with ripples.
+- **Backing track:** optional Canon bassline on cello under everything, with its own volume.
 - **Seeds:** the same seed plays the same performance. Copy a link from Settings to share one.
 
 ## Run locally

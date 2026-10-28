@@ -24,6 +24,7 @@ export class CanonAudio {
     this.nextCycleTime = 0;
     this.timer = null;
     this.stringsVolume = 0.8;
+    this.backingVolume = 0.8;
     this.volume = 0.85;
   }
 
@@ -45,6 +46,8 @@ export class CanonAudio {
     this.stringBus = new Tone.Gain(this.stringsVolume).connect(this.master);
     this.stringSend = new Tone.Gain(0.5).connect(this.reverb);
     this.stringBus.connect(this.stringSend);
+    this.backingBus = new Tone.Gain(this.backingVolume).connect(this.master);
+    this.backingBus.connect(this.stringSend);
 
     onProgress('Loading piano…');
     this.piano = await loadSampler(urlMap(PIANO_NOTES, (n) => `${n}.mp3`), SALAMANDER, { release: 1.2 });
@@ -56,9 +59,10 @@ export class CanonAudio {
     Promise.all([
       loadSampler(urlMap(VIOLIN_NOTES, (n) => `violin_${n}.mp3`), base, { attack: 0.7, release: 1.8 }),
       loadSampler(urlMap(CELLO_NOTES, (n) => `cello_${n}.mp3`), base, { attack: 0.5, release: 1.6 }),
-    ]).then(([violin, cello]) => {
-      this.violin = violin; this.cello = cello;
-      violin.connect(this.stringBus); cello.connect(this.stringBus);
+      loadSampler(urlMap(CELLO_NOTES, (n) => `cello_${n}.mp3`), base, { attack: 0.25, release: 1.2 }),
+    ]).then(([violin, cello, backing]) => {
+      this.violin = violin; this.cello = cello; this.backing = backing;
+      violin.connect(this.stringBus); cello.connect(this.stringBus); backing.connect(this.backingBus);
       this.stringsReady = true;
     }).catch((e) => console.warn('strings failed to load', e));
   }
@@ -87,6 +91,7 @@ export class CanonAudio {
   }
 
   setVolume(v) { this.volume = v; if (this.playing) this.master.gain.rampTo(v, 0.1); }
+  setBackingVolume(v) { this.backingVolume = v; if (this.backingBus) this.backingBus.gain.rampTo(v, 0.2); }
   setStringsVolume(v) { this.stringsVolume = v; if (this.stringBus) this.stringBus.gain.rampTo(v, 0.2); }
 
   fadeOutAndPause(seconds = 20) {
@@ -116,7 +121,7 @@ export class CanonAudio {
     for (const n of cycle.notes) {
       const time = Math.max(this.now + 0.01, timeAt(n.t) + n.hum);
       const dur = Math.max(0.05, timeAt(n.t + n.d) - timeAt(n.t));
-      const inst = n.inst === 'piano' ? this.piano : n.inst === 'violin' ? this.violin : this.cello;
+      const inst = { piano: this.piano, violin: this.violin, cello: this.cello, backing: this.backing }[n.inst];
       if (!inst) continue; // strings still loading
       // piano: a touch of pedal; strings: legato overlap
       const hold = n.inst === 'piano' ? dur * 1.15 : dur + 0.12;

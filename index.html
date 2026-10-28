@@ -28,6 +28,7 @@
     <div class="modes" role="radiogroup" aria-label="Mode">
       <button data-mode="calm" role="radio" aria-checked="true" class="on">Calm / Focus</button>
       <button data-mode="bright" role="radio" aria-checked="false">Bright</button>
+      <button data-mode="masterpiece" role="radio" aria-checked="false">Masterpiece</button>
     </div>
 
     <p id="info" class="info">&nbsp;</p>
@@ -44,6 +45,10 @@
     </label>
     <label class="row">Volume
       <input id="volume" type="range" min="0" max="1" step="0.01" value="0.85" />
+    </label>
+    <label class="row check"><input id="backing" type="checkbox" /> Backing track (Canon bassline on cello)</label>
+    <label class="row">Backing volume
+      <input id="backingVol" type="range" min="0" max="1" step="0.01" value="0.8" />
     </label>
     <label class="row check"><input id="strings" type="checkbox" checked /> Soft strings</label>
     <label class="row">Strings volume

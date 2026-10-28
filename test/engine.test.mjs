@@ -17,7 +17,7 @@ test('same seed gives the same performance', () => {
   assert.notDeepEqual(a, c);
 });
 
-for (const mode of ['calm', 'bright']) {
+for (const mode of ['calm', 'bright', 'masterpiece']) {
   test(`${mode}: ground bass on every beat for 1,000 cycles`, () => {
     for (const c of run({ seed: 7, mode }, 1000)) {
       for (let b = 0; b < 8; b++) {
@@ -110,4 +110,27 @@ test('notes stay in piano range and velocities are sane', () => {
       assert.ok(n.t >= 0 && n.t < 8 && n.d > 0);
     }
   }
+});
+
+test('masterpiece: up to 4 voices, violin counter-lines, more than bright', () => {
+  const mp = run({ seed: 13, mode: 'masterpiece' }, 1000);
+  const br = run({ seed: 13, mode: 'bright' }, 1000);
+  assert.ok(mp.some((c) => c.voices === 4));
+  assert.ok(mp.every((c) => c.voices <= 4));
+  const avg = (cs) => cs.reduce((s, c) => s + c.voices, 0) / cs.length;
+  assert.ok(avg(mp) > avg(br), `masterpiece ${avg(mp)} vs bright ${avg(br)}`);
+  assert.ok(mp.filter((c) => c.notes.some((n) => n.voice === 'vln')).length > 500);
+  for (const c of mp) assert.ok(c.level >= 3 || c.index < 6);
+});
+
+test('backing track: bassline on every beat, from the first cycle, in every mode', () => {
+  for (const mode of ['calm', 'bright', 'masterpiece']) {
+    for (const c of run({ seed: 17, mode, backing: true }, 300)) {
+      for (let b = 0; b < 8; b++) {
+        assert.ok(c.notes.some((n) => n.voice === 'backing' && Math.abs(n.t - b) < 1e-6 && n.m === c.bass[b]), `${mode} ${c.index} ${b}`);
+      }
+      assert.ok(!c.notes.some((n) => n.voice === 'bass'), 'no doubled string cello when backing is on');
+    }
+  }
+  assert.ok(!run({ seed: 17 }, 50).some((c) => c.notes.some((n) => n.voice === 'backing')), 'off by default');
 });

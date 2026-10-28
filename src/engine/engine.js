@@ -11,11 +11,15 @@ import { FIGURES } from './patterns.js';
 export const MODES = {
   calm: {
     label: 'Calm / Focus', lo: 1, hi: 3, bpm: 56, maxVoices: 2, allow16: false,
-    waveMin: [5, 8], modEvery: [24, 40], violins: false, canonAt: 2.4,
+    waveMin: [5, 8], modEvery: [24, 40], violins: false, voiceAt: [2.4], mix: 0.3,
   },
   bright: {
     label: 'Bright', lo: 2, hi: 5, bpm: 66, maxVoices: 3, allow16: true,
-    waveMin: [3, 5], modEvery: [16, 24], violins: true, canonAt: 2.8,
+    waveMin: [3, 5], modEvery: [16, 24], violins: true, voiceAt: [2.8, 4.5], mix: 0.3,
+  },
+  masterpiece: {
+    label: 'Masterpiece', lo: 3, hi: 5, bpm: 62, maxVoices: 4, allow16: true,
+    waveMin: [4, 6], modEvery: [16, 28], violins: true, voiceAt: [3.1, 3.7, 4.3], mix: 0.7, counter: true,
   },
 };
 
@@ -38,6 +42,7 @@ export class CanonEngine {
     this.strings = opts.strings ?? true;
     this.canon = opts.canon ?? true;
     this.stayInD = opts.stayInD ?? false;
+    this.backing = opts.backing ?? false;
     this.bpm = opts.bpm ?? MODES[this.mode].bpm;
 
     this.index = 0;
@@ -185,7 +190,7 @@ export class CanonEngine {
     const pool = ok.length ? ok : FIGURES.filter((f) => f.name === 'quarter');
     const weight = (f) => (f.name === 'half' ? 0.5 : 1) + (level === f.max ? 0.6 : 0) + (f.s16 && level >= 5 ? 0.8 : 0);
     const a = this.rng.weighted(pool, weight);
-    const b = this.rng.chance(0.3) ? this.rng.weighted(pool, weight) : a;
+    const b = this.rng.chance(m.mix) ? this.rng.weighted(pool, weight) : a;
     return [a, b];
   }
 
@@ -282,7 +287,7 @@ export class CanonEngine {
       prev = [a, c2];
     }
     // cello doubles the ground an octave below
-    if (level >= 3) {
+    if (level >= 3 && !this.backing) {
       for (let b = 0; b < 8; b++) {
         let note = bass[b] - 12;
         if (note < 36) note += 12;
@@ -290,10 +295,15 @@ export class CanonEngine {
       }
     }
     // violins sing the famous line in Bright peaks
+    const melTonic = tonicMidi(this.key) + 12;
     if (m.violins && level >= 4) {
-      const melTonic = tonicMidi(this.key) + 12;
       for (let b = 0; b < (mod ? 6 : 8); b++) {
         out.push({ t: b, d: 1, m: degToMidi(melTonic, FAMOUS[b]), v: base + 0.12, inst: 'violin', voice: 'vln' });
+      }
+    } else if (m.counter && level >= 3) {
+      // Masterpiece: Pachelbel's descending line as a singing half-note counter-melody
+      for (let b = 0; b < (mod ? 6 : 8); b += 2) {
+        out.push({ t: b, d: 2, m: degToMidi(melTonic, DESCENT[b]), v: base + 0.1, inst: 'violin', voice: 'vln' });
       }
     }
     return out;
@@ -326,12 +336,24 @@ export class CanonEngine {
     const lh = this._leftHand(bass, chords, level);
 
     // canon voices
-    const voices = !this.canon ? 1 : this.energy >= 4.5 ? 3 : this.energy >= m.canonAt ? 2 : 1;
+    const voices = !this.canon ? 1 : 1 + m.voiceAt.filter((x) => this.energy >= x).length;
     const nVoices = Math.min(voices, m.maxVoices);
     let c2 = [];
     let c3 = [];
+    let c4 = [];
     if (nVoices >= 2) c2 = this._canonVoice(this.history[0], rh, chords, -12, mod, 0.62);
     if (nVoices >= 3) c3 = this._canonVoice(this.history[1], rh.concat(c2), chords, 0, mod, 0.5);
+    if (nVoices >= 4) c4 = this._canonVoice(this.history[2], rh.concat(c2, c3), chords, 12, mod, 0.42);
+
+    // optional backing track: the Canon's bassline on cello, every cycle, legato
+    const backing = [];
+    if (this.backing) {
+      for (let b = 0; b < 8; b++) {
+        backing.push({ t: b, d: 1, m: bass[b], v: 0.62 + 0.04 * this.energy, inst: 'backing', voice: 'backing' });
+        let low = bass[b] - 12;
+        if (low >= 36) backing.push({ t: b, d: 1, m: low, v: 0.45 + 0.03 * this.energy, inst: 'backing', voice: 'backing' });
+      }
+    }
 
     const strings = this._strings(chords, bass, level, mod, skel);
 
@@ -357,6 +379,8 @@ export class CanonEngine {
     push(lh.notes, 'piano', 'lh', 0.85);
     push(c2, 'piano', 'c2', 1);
     push(c3, 'piano', 'c3', 1);
+    push(c4, 'piano', 'c4', 1);
+    for (const x of backing) notes.push({ ...x, v: Math.min(1, x.v), hum: r.range(-0.008, 0.008) });
     for (const s of strings) notes.push({ ...s, v: Math.min(1, s.v * (0.7 + 0.1 * this.energy)), hum: r.range(-0.015, 0.015) });
 
     const cycle = {
@@ -366,7 +390,7 @@ export class CanonEngine {
       mode: this.mode,
       energy: this.energy,
       level,
-      voices: 1 + (c2.length ? 1 : 0) + (c3.length ? 1 : 0),
+      voices: 1 + (c2.length ? 1 : 0) + (c3.length ? 1 : 0) + (c4.length ? 1 : 0),
       famous: skel.type === 'famous',
       skeleton: skel.type,
       figures: figs.map((f) => f.name),
@@ -380,7 +404,7 @@ export class CanonEngine {
 
     // remember this line for the canon
     this.history.unshift({ notes: rh, tonic: tonicMidi(this.key), pivotBeats: mod ? [6, 7] : [] });
-    this.history.length = Math.min(this.history.length, 2);
+    this.history.length = Math.min(this.history.length, 3);
 
     // advance key
     if (mod) {

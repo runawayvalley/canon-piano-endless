@@ -15,16 +15,18 @@ const state = {
   stayInD: saved.stayInD ?? false,
   volume: saved.volume ?? 0.85,
   stringsVol: saved.stringsVol ?? 0.8,
+  backing: saved.backing ?? false,
+  backingVol: saved.backingVol ?? 0.8,
 };
 state.bpm = saved.bpm?.[state.mode] ?? MODES[state.mode].bpm;
 const persist = () => localStorage.setItem('canon-endless', JSON.stringify({
   mode: state.mode, strings: state.strings, canon: state.canon, stayInD: state.stayInD,
-  volume: state.volume, stringsVol: state.stringsVol, bpm: { ...(saved.bpm || {}), [state.mode]: state.bpm },
+  volume: state.volume, stringsVol: state.stringsVol, backing: state.backing, backingVol: state.backingVol, bpm: { ...(saved.bpm || {}), [state.mode]: state.bpm },
 }));
 
 const makeEngine = () => new CanonEngine({
   seed: state.seed, mode: state.mode, strings: state.strings, canon: state.canon,
-  stayInD: state.stayInD, bpm: state.bpm,
+  stayInD: state.stayInD, backing: state.backing, bpm: state.bpm,
 });
 
 let engine = makeEngine();
@@ -34,6 +36,7 @@ let startedAt = null;
 let sleepTimer = null;
 
 const roll = new PianoRoll($('roll'), () => (audio?.ready ? audio.now : 0));
+roll.setMode(state.mode);
 
 // ---- UI wiring --------------------------------------------------------------
 const playBtn = $('play');
@@ -51,6 +54,8 @@ function syncControls() {
   $('stringsVol').value = state.stringsVol;
   $('canon').checked = state.canon;
   $('stayInD').checked = state.stayInD;
+  $('backing').checked = state.backing;
+  $('backingVol').value = state.backingVol;
   $('seed').textContent = state.seed;
 }
 syncControls();
@@ -65,6 +70,7 @@ playBtn.addEventListener('click', async () => {
     });
     audio.setVolume(state.volume);
     audio.setStringsVolume(state.strings ? state.stringsVol : 0);
+    audio.setBackingVolume(state.backingVol);
     try {
       await audio.init((msg) => { status.textContent = msg; });
     } catch (e) {
@@ -98,6 +104,7 @@ document.querySelectorAll('.modes button').forEach((b) => b.addEventListener('cl
   state.bpm = saved.bpm?.[state.mode] ?? MODES[state.mode].bpm;
   engine.setMode(state.mode);
   engine.bpm = state.bpm;
+  roll.setMode(state.mode);
   persist(); syncControls();
 }));
 
@@ -113,6 +120,8 @@ $('strings').addEventListener('change', (e) => {
 $('stringsVol').addEventListener('input', (e) => {
   state.stringsVol = Number(e.target.value); if (state.strings) audio?.setStringsVolume(state.stringsVol); persist();
 });
+$('backing').addEventListener('change', (e) => { state.backing = e.target.checked; engine.setOptions({ backing: state.backing }); persist(); });
+$('backingVol').addEventListener('input', (e) => { state.backingVol = Number(e.target.value); audio?.setBackingVolume(state.backingVol); persist(); });
 $('canon').addEventListener('change', (e) => { state.canon = e.target.checked; engine.setOptions({ canon: state.canon }); persist(); });
 $('stayInD').addEventListener('change', (e) => { state.stayInD = e.target.checked; engine.setOptions({ stayInD: state.stayInD }); persist(); });
 
@@ -168,6 +177,7 @@ setInterval(() => {
   const now = audio.now;
   const cur = [...cycles].reverse().find((c) => c.startTime <= now);
   if (!cur) return;
+  roll.setKey(cur.key);
   const voices = cur.voices > 1 ? ` · ${cur.voices} voices` : '';
   const change = cur.transition ? ` → ${cur.transition.toName}` : '';
   $('info').textContent = `Variation ${cur.index + 1} · ${cur.keyName} major${change}${voices} · ${fmt(now - startedAt)}`;
