@@ -209,11 +209,26 @@ test('mythical: twelve voices at the peak, each with its own part, gathering as 
   for (const v of all) assert.ok(cs.filter((c) => c.notes.some((n) => n.voice === v)).length >= 150, `${v} too rare`);
 });
 
-test('mythical: stays melodic and clear (no sixteenths in the lead, no key struck twice at once, sane range)', () => {
-  for (const c of run({ seed: 33, mode: 'mythical' }, 1000)) {
-    assert.ok(!c.figures.some((f) => /16|alberti/.test(f)), 'sixteenth figures in the lead');
+test('mythical: stays melodic and clear (sixteenths only at the peak, no key struck twice at once, sane range)', () => {
+  const fast = (c) => c.figures.some((f) => /16|alberti/.test(f));
+  const cs = run({ seed: 33, mode: 'mythical' }, 1000);
+  const { surge } = MODES.mythical;
+  assert.equal(surge[2], 4.5, 'the last step is the peak itself (level 5)');
+  for (const c of cs) {
     const piano = c.notes.filter((n) => n.inst === 'piano');
     const extra = piano.filter((n) => n.voice !== 'rh' && n.voice !== 'lh');
+    // the lead only runs at the peak itself
+    if (c.level < 5) assert.ok(!fast(c), `cycle ${c.index}: sixteenth figures in the lead at level ${c.level}`);
+    const cutVoices = extra.filter((y) => ['alto', 'tenor', 'echo', 'harp'].includes(y.voice));
+    const onGrid = (x, div) => Math.abs(x.t * div - Math.round(x.t * div)) < 1e-6;
+    if (c.energy < surge[0]) {
+      // below the last climb: no rolling left hand, and the voices cut from the melody
+      // keep to their slow parts (alto and tenor on the beat, one bell per beat)
+      assert.notEqual(c.leftHand, 'grand');
+      for (const v of ['alto', 'tenor', 'echo']) assert.ok(cutVoices.filter((x) => x.voice === v).length <= 8, `cycle ${c.index}: ${v} busy`);
+    }
+    // thirty-seconds only from the second step of the climb
+    if (c.energy < surge[1]) for (const x of cutVoices) assert.ok(onGrid(x, 4), `cycle ${c.index}: ${x.voice} at ${x.t}`);
     for (const x of extra) {
       const twice = piano.filter((y) => y !== x && y.m === x.m && Math.abs(y.t - x.t) < 1e-6);
       assert.equal(twice.length, 0, `cycle ${c.index}: ${x.voice} doubles ${twice[0]?.voice} at ${x.t}`);
@@ -225,26 +240,53 @@ test('mythical: stays melodic and clear (no sixteenths in the lead, no key struc
       if (n.inst === 'violin') assert.ok(n.m >= 55, `violin too low: ${n.m}`);
     }
     // the voices cut from the melody only use notes of the chord they sound over
-    for (const n of c.notes.filter((x) => ['alto', 'tenor', 'echo', 'harp', 'vln', 'vln2', 'cel'].includes(x.voice))) {
+    const onChord = ['tenor', 'echo', 'harp', 'vln', 'vln2', 'cel'].concat(c.energy < surge[0] ? ['alto'] : []);
+    for (const n of c.notes.filter((x) => onChord.includes(x.voice))) {
       assert.ok(c.chords[Math.floor(n.t)].includes(mod12(n.m)), `cycle ${c.index}: ${n.voice} off the chord at ${n.t}`);
     }
+    // (on the climb the alto shadows the lead instead: a third or so under one of its notes)
+    if (c.energy >= surge[0]) {
+      const lead = c.notes.filter((x) => x.voice === 'rh');
+      for (const n of c.notes.filter((x) => x.voice === 'alto')) {
+        assert.ok(lead.some((y) => Math.abs(y.t - n.t) < 1e-6 && y.m - n.m >= 2 && y.m - n.m <= 5), `cycle ${c.index}: alto adrift at ${n.t}`);
+      }
+    }
   }
+  const peak = cs.filter((c) => c.level >= 5);
+  assert.ok(peak.filter(fast).length > peak.length / 2, `the lead runs in most peak cycles: ${peak.filter(fast).length}/${peak.length}`);
+  assert.ok(peak.some((c) => c.leftHand === 'grand'));
 });
 
-test('mythical: the peak is wide, not louder or busier than Extreme', () => {
-  const load = (mode) => {
+test('mythical: the peak is busier than Extreme but no louder, and is reached by a build', () => {
+  const load = (mode, pick) => {
     const e = new CanonEngine({ seed: 21, mode });
-    const peak = Array.from({ length: 1000 }, () => e.next()).filter((c) => c.energy >= 4.6);
-    const rate = peak.reduce((s, c) => s + c.notes.filter((n) => n.inst === 'piano').length, 0) / peak.length / e.cycleSec;
-    // energy of the piano notes sounding on each beat, worst beat of the cycle, averaged
-    const power = peak.reduce((s, c) => s + Math.max(...[0, 1, 2, 3, 4, 5, 6, 7].map((b) =>
-      Math.sqrt(c.notes.filter((n) => n.inst === 'piano' && n.t <= b + 0.2 && b < n.t + n.d).reduce((q, n) => q + n.v * n.v, 0)))), 0) / peak.length;
-    return { rate, power };
+    const cs = Array.from({ length: 1000 }, () => e.next()).filter(pick);
+    const piano = (c) => c.notes.filter((n) => n.inst === 'piano');
+    const mean = (f) => cs.reduce((s, c) => s + f(c), 0) / cs.length;
+    return {
+      rate: mean((c) => piano(c).length) / e.cycleSec,
+      all: mean((c) => c.notes.length) / e.cycleSec,
+      // energy of the piano notes sounding on each beat, worst beat of the cycle, averaged
+      power: mean((c) => Math.max(...[0, 1, 2, 3, 4, 5, 6, 7].map((b) =>
+        Math.sqrt(piano(c).filter((n) => n.t <= b + 0.2 && b < n.t + n.d).reduce((q, n) => q + n.v * n.v, 0))))),
+      // energy of all the piano notes struck, per second
+      flux: mean((c) => piano(c).reduce((q, n) => q + n.v * n.v, 0)) / e.cycleSec,
+    };
   };
-  const my = load('mythical');
-  const ex = load('extreme');
-  assert.ok(my.rate < ex.rate, `piano notes per second ${my.rate} vs ${ex.rate}`);
+  const my = load('mythical', (c) => c.energy >= 4.6);
+  const ex = load('extreme', (c) => c.energy >= 4.6);
+  assert.ok(my.rate > ex.rate * 1.1, `piano notes per second ${my.rate} vs ${ex.rate}`);
+  assert.ok(my.all > ex.all * 1.1, `notes per second ${my.all} vs ${ex.all}`);
   assert.ok(my.power <= ex.power * 1.05, `piano level ${my.power} vs ${ex.power}`);
+  assert.ok(my.flux <= ex.flux, `piano energy per second ${my.flux} vs ${ex.flux}`);
+  // below the last climb it is far calmer than Extreme, and the climb is a build, not a switch
+  const [s1, s2, s3] = MODES.mythical.surge;
+  const band = (lo, hi) => load('mythical', (c) => c.index > 6 && c.energy >= lo && c.energy < hi).rate;
+  const steps = [band(3.6, s1), band(s1, s2), band(s2, s3), band(s3, 4.6), my.rate];
+  assert.ok(band(0, s1) < ex.rate * 0.5, `below the climb: ${band(0, s1)} piano notes per second vs Extreme's ${ex.rate}`);
+  for (let i = 1; i < steps.length; i++) {
+    assert.ok(steps[i] > steps[i - 1] && steps[i] < steps[i - 1] * 1.5, `piano notes per second by step: ${steps.map((x) => x.toFixed(1))}`);
+  }
 });
 
 test('mythical: canon and strings switches still thin it out', () => {

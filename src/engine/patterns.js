@@ -2,8 +2,8 @@
 // Each figure turns (cur, next, chord) into notes inside one beat: {t, d, m, v}
 // t/d in beats (0 ≤ t < 1 within the beat), m = MIDI, v = relative velocity.
 // min/max: the energy levels a figure belongs to; myth: its levels in Mythical, which
-// has no sixteenths and so lets the singing figures reach further up.
-import { scaleStep, chordToneAbove, chordToneBelow, mod12 } from './theory.js?v=12';
+// keeps its sixteenths for the peak and so lets the singing figures reach further up.
+import { scaleStep, chordToneAbove, chordToneBelow, mod12 } from './theory.js?v=13';
 
 const n = (t, d, m, v = 1) => ({ t, d, m, v });
 
@@ -34,7 +34,7 @@ export const FIGURES = [
     keepsContour: true,
   },
   {
-    name: 'eighthStep', min: 2, max: 4, s16: false, myth: [2, 5],
+    name: 'eighthStep', min: 2, max: 4, s16: false, myth: [2, 4],
     render: ({ cur, next, chord }) => {
       const dir = next === cur ? 1 : Math.sign(next - cur);
       return [n(0, 0.5, cur), n(0.5, 0.5, scaleStep(cur, dir, chord.scale), 0.8)];
@@ -107,6 +107,16 @@ export const FIGURES = [
       const a = chordToneBelow(chordToneBelow(cur, chord.pcs), chord.pcs);
       const b = chordToneAbove(a, chord.pcs);
       return [n(0, 0.25, cur), n(0.25, 0.25, a, 0.7), n(0.5, 0.25, b, 0.75), n(0.75, 0.25, cur, 0.8)];
+    },
+    keepsContour: true,
+  },
+  {
+    name: 'grandRun16', min: 5, max: 5, s16: true, mythOnly: true,
+    // a scale run with the melody note struck in octaves under it (Mythical's peak only)
+    render: ({ cur, next, chord }) => {
+      const dir = next >= cur ? 1 : -1;
+      return [0, 1, 2, 3].map((i) => n(i * 0.25, 0.25, scaleStep(cur, dir * i, chord.scale), i === 0 ? 1 : 0.75))
+        .concat([n(0, 0.98, cur - 12, 0.65)]);
     },
     keepsContour: true,
   },
