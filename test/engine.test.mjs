@@ -1,7 +1,7 @@
 // Run with: node --test test/
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { CanonEngine } from '../src/engine/engine.js';
+import { CanonEngine, MODES, MYTHIC_VOICES } from '../src/engine/engine.js';
 import { HOME, mod12, isSemitoneClash } from '../src/engine/theory.js';
 
 const run = (opts, n) => {
@@ -17,7 +17,7 @@ test('same seed gives the same performance', () => {
   assert.notDeepEqual(a, c);
 });
 
-for (const mode of ['calm', 'bright', 'masterpiece', 'extreme']) {
+for (const mode of ['calm', 'bright', 'masterpiece', 'extreme', 'mythical']) {
   test(`${mode}: ground bass on every beat for 1,000 cycles`, () => {
     for (const c of run({ seed: 7, mode }, 1000)) {
       for (let b = 0; b < 8; b++) {
@@ -124,7 +124,7 @@ test('masterpiece: up to 4 voices, violin counter-lines, more than bright', () =
 });
 
 test('backing track: bassline (octave above the piano bass) on every beat, from the first cycle, in every mode', () => {
-  for (const mode of ['calm', 'bright', 'masterpiece', 'extreme']) {
+  for (const mode of ['calm', 'bright', 'masterpiece', 'extreme', 'mythical']) {
     for (const c of run({ seed: 17, mode, backing: true }, 300)) {
       for (let b = 0; b < 8; b++) {
         assert.ok(c.notes.some((n) => n.voice === 'backing' && Math.abs(n.t - b) < 1e-6 && n.m === (c.bass[b] + 12 <= 64 ? c.bass[b] + 12 : c.bass[b])), `${mode} ${c.index} ${b}`);
@@ -164,7 +164,7 @@ test('main.js wires each control once (no listeners added inside other handlers)
 });
 
 test('backing track is audibly distinct: never just doubles the piano left hand', () => {
-  for (const mode of ['calm', 'bright', 'masterpiece', 'extreme']) {
+  for (const mode of ['calm', 'bright', 'masterpiece', 'extreme', 'mythical']) {
     for (const c of run({ seed: 31, mode, backing: true }, 200)) {
       const lh = new Set(c.notes.filter((n) => n.voice === 'lh').map((n) => `${n.t}:${n.m}`));
       const back = c.notes.filter((n) => n.voice === 'backing');
@@ -172,5 +172,95 @@ test('backing track is audibly distinct: never just doubles the piano left hand'
       assert.ok(doubled / back.length < 0.2, `${mode} cycle ${c.index}: ${doubled}/${back.length} doubled`);
       assert.ok(back.every((n) => n.m >= 24 && n.m <= 64));
     }
+  }
+});
+
+test('mythical: the slowest default tempo, and the tempo slider reaches it', async () => {
+  for (const [name, m] of Object.entries(MODES)) if (name !== 'mythical') assert.ok(MODES.mythical.bpm < m.bpm, `slower than ${name}`);
+  assert.equal(new CanonEngine({ mode: 'mythical' }).bpm, MODES.mythical.bpm);
+  const { readFile } = await import('node:fs/promises');
+  const html = await readFile(new URL('../index.html', import.meta.url), 'utf8');
+  const min = Number(html.match(/id="tempo"[^>]*min="(\d+)"/)[1]);
+  assert.ok(min <= MODES.mythical.bpm - 5, `slider min ${min}`);
+  assert.ok(html.includes('data-mode="mythical"'), 'mode button exists');
+});
+
+test('mythical: twelve voices at the peak, each with its own part, gathering as the energy rises', () => {
+  const cs = run({ seed: 21, mode: 'mythical' }, 1000);
+  const all = ['rh', ...MYTHIC_VOICES];
+  assert.equal(all.length, 12);
+  assert.ok(cs.every((c) => c.voices <= 12));
+  const twelve = cs.filter((c) => c.voices === 12);
+  assert.ok(twelve.length > 100, `12 voices in ${twelve.length} cycles`);
+  for (const c of twelve) {
+    assert.ok(c.energy >= 4.6, `12 voices only at the peak (energy ${c.energy})`);
+    for (const v of all) assert.ok(c.notes.some((n) => n.voice === v), `cycle ${c.index}: ${v} is silent`);
+    // no two voices play the same part: each differs from every other in its notes
+    const sig = (v) => c.notes.filter((n) => n.voice === v).map((n) => `${n.t}:${n.d}:${n.m}`).join();
+    assert.equal(new Set(all.map(sig)).size, 12, `cycle ${c.index}: two voices identical`);
+  }
+  // it opens alone and the voices come in step by step
+  assert.equal(cs[0].voices, 1);
+  const avg = (xs) => xs.reduce((s, c) => s + c.voices, 0) / xs.length;
+  const band = (lo, hi) => avg(cs.filter((c) => c.index > 6 && c.energy >= lo && c.energy < hi));
+  assert.ok(band(2, 2.8) < band(2.8, 3.6) && band(2.8, 3.6) < band(3.6, 4.4) && band(3.6, 4.4) < band(4.4, 5.1));
+  for (let n = 1; n <= 12; n++) assert.ok(cs.some((c) => c.voices === n), `never exactly ${n} voices`);
+  // every one of the twelve is heard for a good share of the time
+  for (const v of all) assert.ok(cs.filter((c) => c.notes.some((n) => n.voice === v)).length >= 150, `${v} too rare`);
+});
+
+test('mythical: stays melodic and clear (no sixteenths in the lead, no key struck twice at once, sane range)', () => {
+  for (const c of run({ seed: 33, mode: 'mythical' }, 1000)) {
+    assert.ok(!c.figures.some((f) => /16|alberti/.test(f)), 'sixteenth figures in the lead');
+    const piano = c.notes.filter((n) => n.inst === 'piano');
+    const extra = piano.filter((n) => n.voice !== 'rh' && n.voice !== 'lh');
+    for (const x of extra) {
+      const twice = piano.filter((y) => y !== x && y.m === x.m && Math.abs(y.t - x.t) < 1e-6);
+      assert.equal(twice.length, 0, `cycle ${c.index}: ${x.voice} doubles ${twice[0]?.voice} at ${x.t}`);
+    }
+    for (const n of c.notes) {
+      assert.ok(n.m >= 21 && n.m <= 108, `midi ${n.m}`);
+      assert.ok(n.v > 0 && n.v <= 1, `vel ${n.v}`);
+      assert.ok(n.t >= 0 && n.t < 8 && n.d > 0);
+      if (n.inst === 'violin') assert.ok(n.m >= 55, `violin too low: ${n.m}`);
+    }
+    // the voices cut from the melody only use notes of the chord they sound over
+    for (const n of c.notes.filter((x) => ['alto', 'tenor', 'echo', 'harp', 'vln', 'vln2', 'cel'].includes(x.voice))) {
+      assert.ok(c.chords[Math.floor(n.t)].includes(mod12(n.m)), `cycle ${c.index}: ${n.voice} off the chord at ${n.t}`);
+    }
+  }
+});
+
+test('mythical: the peak is wide, not louder or busier than Extreme', () => {
+  const load = (mode) => {
+    const e = new CanonEngine({ seed: 21, mode });
+    const peak = Array.from({ length: 1000 }, () => e.next()).filter((c) => c.energy >= 4.6);
+    const rate = peak.reduce((s, c) => s + c.notes.filter((n) => n.inst === 'piano').length, 0) / peak.length / e.cycleSec;
+    // energy of the piano notes sounding on each beat, worst beat of the cycle, averaged
+    const power = peak.reduce((s, c) => s + Math.max(...[0, 1, 2, 3, 4, 5, 6, 7].map((b) =>
+      Math.sqrt(c.notes.filter((n) => n.inst === 'piano' && n.t <= b + 0.2 && b < n.t + n.d).reduce((q, n) => q + n.v * n.v, 0)))), 0) / peak.length;
+    return { rate, power };
+  };
+  const my = load('mythical');
+  const ex = load('extreme');
+  assert.ok(my.rate < ex.rate, `piano notes per second ${my.rate} vs ${ex.rate}`);
+  assert.ok(my.power <= ex.power * 1.05, `piano level ${my.power} vs ${ex.power}`);
+});
+
+test('mythical: canon and strings switches still thin it out', () => {
+  const noCanon = run({ seed: 21, mode: 'mythical', canon: false }, 400);
+  assert.ok(noCanon.every((c) => !c.notes.some((n) => n.inst === 'piano' && n.voice !== 'rh' && n.voice !== 'lh')));
+  const noStrings = run({ seed: 21, mode: 'mythical', strings: false }, 400);
+  assert.ok(noStrings.every((c) => c.notes.every((n) => n.inst === 'piano') && c.voices <= 8));
+});
+
+test('the page offers every mode the engine has, with a look for each', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const read = (p) => readFile(new URL(p, import.meta.url), 'utf8');
+  const [html, roll, css] = await Promise.all([read('../index.html'), read('../src/ui/roll.js'), read('../style.css')]);
+  for (const mode of Object.keys(MODES)) {
+    assert.ok(html.includes(`data-mode="${mode}"`), `${mode} button`);
+    assert.ok(new RegExp(`^  ${mode}: \\{`, 'm').test(roll), `${mode} roll theme`);
+    assert.ok(css.includes(`body[data-mode="${mode}"]`), `${mode} accent colour`);
   }
 });

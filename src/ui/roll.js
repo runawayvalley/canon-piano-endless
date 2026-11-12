@@ -3,6 +3,7 @@
 //  bright:      warm gold, sparks burst from notes as they land
 //  masterpiece: aurora ribbons overhead, ripples on every hit, jewel colours
 //  extreme:     fast fall, ember-red aurora, heavy sparks
+//  mythical:    slow fall under a pale moon, jade aurora, gold motes, a colour per voice
 //
 // Performance notes: no shadowBlur (it blurs every note on every frame), the sky and
 // aurora are painted on a quarter-resolution canvas behind the notes, the keyboard is
@@ -58,7 +59,27 @@ const THEMES = {
     auroraHue: 350,
     sparks: 4,
   },
+  mythical: {
+    seconds: 4.5,
+    bg: ['#0f2b33', '#03070c'],
+    colors: {
+      rh: [246, 228, 160], lh: [70, 150, 165], c2: [120, 222, 190], c3: [176, 152, 255], c4: [236, 244, 255],
+      alto: [255, 190, 122], tenor: [206, 136, 96], echo: [186, 238, 255], harp: [150, 255, 208],
+      pad: [70, 160, 150], bass: [44, 104, 124], vln: [255, 236, 190], vln2: [222, 182, 255], desc: [198, 255, 240], cel: [112, 192, 172],
+      backing: [60, 140, 150],
+    },
+    halo: 0.2,
+    dust: 60,
+    dustColor: 'rgb(255,236,190)',
+    ripples: true,
+    aurora: true,
+    auroraHue: 158,
+    moon: true,
+    sparks: 1,
+  },
 };
+// string voices that sing a line of their own are drawn as slimmer bands than the pad
+const SUNG = new Set(['vln', 'vln2', 'desc', 'cel']);
 for (const th of Object.values(THEMES)) {
   th.css = {};
   for (const [k, [r, g, b]] of Object.entries(th.colors)) th.css[k] = `rgb(${r},${g},${b})`;
@@ -179,6 +200,16 @@ export class PianoRoll {
     g.addColorStop(0, th.bg[0]); g.addColorStop(0.7, th.bg[1]);
     bg.globalCompositeOperation = 'source-over';
     bg.fillStyle = g; bg.fillRect(0, 0, w, h);
+    if (th.moon) {
+      const mx = w * 0.15; const my = h * 0.11; const mr = Math.max(6, Math.min(w, h) * 0.055);
+      const glow = bg.createRadialGradient(mx, my, 0, mx, my, mr * 5);
+      glow.addColorStop(0, 'rgba(214,246,232,0.95)');
+      glow.addColorStop(0.19, 'rgba(204,240,226,0.9)');
+      glow.addColorStop(0.24, 'rgba(150,220,200,0.22)');
+      glow.addColorStop(1, 'rgba(120,200,190,0)');
+      bg.fillStyle = glow;
+      bg.fillRect(mx - mr * 5, my - mr * 5, mr * 10, mr * 10);
+    }
     if (!th.aurora) return;
     bg.globalCompositeOperation = 'lighter';
     const baseHue = th.auroraHue != null ? (th.auroraHue + this.keyPc * 4) % 360 : (this.keyPc * 30 + 260) % 360;
@@ -240,7 +271,7 @@ export class PianoRoll {
     ctx.clearRect(0, 0, w, this.h);
 
     if (th.dust) {
-      ctx.fillStyle = 'rgb(200,210,255)';
+      ctx.fillStyle = th.dustColor || 'rgb(200,210,255)';
       const n = this.low ? 25 : th.dust;
       for (let i = 0; i < n; i++) {
         const d = this.dust[i];
@@ -273,7 +304,7 @@ export class PianoRoll {
         const hgt = Math.max(2, Math.min(hitY, y1) - top);
         ctx.fillStyle = th.css[n.voice] || th.css.rh;
         if (isStr) {
-          const wide = n.voice === 'vln' && (this.mode === 'masterpiece' || this.mode === 'extreme') ? 2.2 : 4;
+          const wide = (this.mode === 'mythical' ? SUNG.has(n.voice) : n.voice === 'vln' && (this.mode === 'masterpiece' || this.mode === 'extreme')) ? 2.2 : 4;
           ctx.globalAlpha = 0.05 + n.v * 0.12;
           ctx.fillRect(x - keyW * (wide - 1) / 2, top, keyW * wide, hgt);
         } else {

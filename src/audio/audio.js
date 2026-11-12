@@ -1,7 +1,7 @@
 // Audio: sampled piano + soft strings (Tone.js), and a look-ahead scheduler that
 // asks the engine for one cycle at a time and places every note on the audio clock.
 /* global Tone */
-import { NOTE_NAMES } from '../engine/theory.js?v=11';
+import { NOTE_NAMES } from '../engine/theory.js?v=12';
 
 const SALAMANDER = 'https://tonejs.github.io/audio/salamander/';
 const PIANO_NOTES = ['A1', 'C2', 'Ds2', 'Fs2', 'A2', 'C3', 'Ds3', 'Fs3', 'A3', 'C4', 'Ds4', 'Fs4',
@@ -103,6 +103,23 @@ export class CanonAudio {
   setVolume(v) { this.volume = v; if (this.playing) this.master.gain.rampTo(v, 0.1); }
   setBackingVolume(v) { this.backingVolume = v; if (this.backingBus) this.backingBus.gain.rampTo(v * 1.6, 0.2); }
   setStringsVolume(v) { this.stringsVolume = v; if (this.stringBus) this.stringBus.gain.rampTo(v, 0.2); }
+
+  // A second, much longer reverb for modes that want a vast space (Mythical): amount is
+  // the send level, 0 for none. It is only built the first time a mode asks for it, and
+  // fades in and out over a couple of seconds so switching modes never jolts.
+  setHall(amount) {
+    this.hallAmount = amount;
+    if (!this.master) return;
+    if (this.hallSend) { this.hallSend.gain.rampTo(amount, 2.5); return; }
+    if (!amount || this.hall) return;
+    this.hall = new Tone.Reverb({ decay: 8, preDelay: 0.045, wet: 1 });
+    this.hall.generate().then(() => {
+      this.hallSend = new Tone.Gain(0).connect(this.hall);
+      this.hall.connect(this.master);
+      for (const bus of [this.pianoBus, this.stringBus, this.backingBus]) bus.connect(this.hallSend);
+      this.hallSend.gain.rampTo(this.hallAmount, 2.5);
+    }).catch((e) => console.warn('hall reverb failed', e));
+  }
 
   fadeOutAndPause(seconds = 20) {
     this.master.gain.rampTo(0, seconds);

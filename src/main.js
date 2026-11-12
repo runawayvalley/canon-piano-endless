@@ -1,7 +1,7 @@
-import { CanonEngine, MODES } from './engine/engine.js?v=11';
-import { randomSeed } from './engine/rng.js?v=11';
-import { CanonAudio } from './audio/audio.js?v=11';
-import { PianoRoll } from './ui/roll.js?v=11';
+import { CanonEngine, MODES } from './engine/engine.js?v=12';
+import { randomSeed } from './engine/rng.js?v=12';
+import { CanonAudio } from './audio/audio.js?v=12';
+import { PianoRoll } from './ui/roll.js?v=12';
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -87,6 +87,7 @@ playBtn.addEventListener('click', async () => {
     audio.setBackingVolume(state.backingVol);
     try {
       await audio.init((msg) => { status.textContent = msg; });
+      audio.setHall(MODES[state.mode].hall || 0);
     } catch (e) {
       console.error(e);
       status.textContent = 'Could not load the piano. Check your connection and try again.';
@@ -119,6 +120,7 @@ document.querySelectorAll('.modes button').forEach((b) => b.addEventListener('cl
   engine.setMode(state.mode);
   engine.bpm = state.bpm;
   roll.setMode(state.mode);
+  audio?.setHall(MODES[state.mode].hall || 0);
   persist(); syncControls();
 }));
 

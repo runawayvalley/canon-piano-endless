@@ -1,12 +1,12 @@
 // The endless Canon engine. Pure JS, no audio: each call to next() returns one
 // cycle (2 bars = 8 chords = 8 beats) of note events. Same seed → same music.
-import { makeRng } from './rng.js?v=11';
+import { makeRng } from './rng.js?v=12';
 import {
   HOME, KEY_NAMES, GROUND, FAMOUS, DESCENT, mod12, tonicMidi, degToMidi,
   diatonicChord, pivotChord, nearestChordTone, chordTonesIn, chordToneAbove,
   chordToneBelow, isSemitoneClash,
-} from './theory.js?v=11';
-import { FIGURES } from './patterns.js?v=11';
+} from './theory.js?v=12';
+import { FIGURES } from './patterns.js?v=12';
 
 export const MODES = {
   calm: {
@@ -25,7 +25,42 @@ export const MODES = {
     label: 'Extreme', lo: 4, hi: 5, bpm: 70, maxVoices: 6, allow16: true,
     waveMin: [3, 4], modEvery: [12, 20], violins: true, voiceAt: [4.0, 4.0, 4.1, 4.25, 4.4], mix: 0.85, counter: true,
   },
+  // Slow, wide and grand. Twelve voices, but not twelve stacked replays: each one
+  // has its own part of the melody (see MYTHIC_VOICES) and they gather one by one
+  // as the energy climbs, so all twelve only sound together at the peak.
+  mythical: {
+    label: 'Mythical', lo: 2, hi: 5, bpm: 48, maxVoices: 12, allow16: false,
+    waveMin: [4, 6], modEvery: [14, 24], violins: true, mix: 0.5, mythic: true, hall: 0.3,
+    voiceAt: [2.2, 2.5, 2.8, 3.1, 3.4, 3.7, 3.9, 4.1, 4.3, 4.45, 4.6],
+  },
 };
+
+// The eleven voices that join the lead in Mythical, in order of entry (paired with
+// MODES.mythical.voiceAt). What each one does with the melody:
+//   vln    violins sing the melody's outline in long notes
+//   c2     canon: the melody from 2 bars ago, an octave below
+//   harp   rolls through the chord under each melody note, rising and falling
+//   cel    cello sings the outline from 2 bars ago in the tenor register
+//   alto   harmony: the chord tone under each melody note
+//   c3     canon: the melody from 4 bars ago
+//   desc   descant: Pachelbel's other theme (the one the lead is not playing)
+//   echo   bells: each melody note answered an octave higher, off the beat
+//   vln2   second violins, an open sixth or so under the first
+//   c4     canon: the melody from 6 bars ago, an octave above
+//   tenor  tolls the melody an octave below, twice a bar
+export const MYTHIC_VOICES = ['vln', 'c2', 'harp', 'cel', 'alto', 'c3', 'desc', 'echo', 'vln2', 'c4', 'tenor'];
+const MYTHIC_STRINGS = new Set(['vln', 'cel', 'desc', 'vln2']);
+
+// Join repeated notes of a string line into one long bow.
+function legato(notes) {
+  const out = [];
+  for (const x of notes) {
+    const last = out[out.length - 1];
+    if (last && last.m === x.m && Math.abs(last.t + last.d - x.t) < 1e-6) last.d += x.d;
+    else out.push({ ...x });
+  }
+  return out;
+}
 
 // Where each key can go, and how the change is prepared.
 //  lift: ♭VI – ♭VII – I of the new key;  dom: IV – V7 – I of the new key.
@@ -156,6 +191,7 @@ export class CanonEngine {
     const r = this.rng;
     let type;
     if (forceFamous) type = 'famous';
+    else if (MODES[this.mode].mythic) type = r.weighted(['famous', 'descent', 'walk', 'walk'], (t) => (t === 'famous' ? 0.24 : t === 'descent' ? 0.16 : 0.3));
     else type = r.weighted(['famous', 'descent', 'walk', 'walk'], (t) => (t === 'famous' ? 0.18 : t === 'descent' ? 0.17 : 0.33));
 
     let notes;
@@ -166,15 +202,26 @@ export class CanonEngine {
     } else {
       notes = [];
       let prev = this.lastSkel ? this.lastSkel[7] : degToMidi(melTonic, 2);
+      // Mythical: the walk follows an arch, climbing to one peak and settling again.
+      // The arch stands taller the higher the energy, so the climax also sings highest.
+      let arch = null;
+      if (MODES[this.mode].mythic) {
+        type = 'arch';
+        const peak = r.pick([3, 4, 4, 5]);
+        const floor = lo + 2 + (this.energy - 2) * 1.2;
+        const height = 5 + (this.energy - 2) * 2.8;
+        arch = (b) => floor + height * (b <= peak ? Math.sin((Math.PI / 2) * (b / peak)) : Math.cos((Math.PI / 2) * ((b - peak) / (8 - peak))) ** 0.8);
+      }
       for (let b = 0; b < 8; b++) {
         const cands = chordTonesIn(chords[b].pcs, lo, hi);
         const m = r.weighted(cands, (c) => {
           const d = Math.abs(c - prev);
-          if (d === 0) return 0.25;
-          if (d <= 2) return 3;
-          if (d <= 5) return 2;
-          if (d <= 9) return 0.6;
-          return 0.1;
+          const pull = arch ? Math.exp(-Math.abs(c - arch(b)) / 3) : 1;
+          if (d === 0) return 0.25 * pull;
+          if (d <= 2) return 3 * pull;
+          if (d <= 5) return 2 * pull;
+          if (d <= 9) return 0.6 * pull;
+          return 0.1 * pull;
         });
         notes.push(m);
         prev = m;
@@ -189,10 +236,13 @@ export class CanonEngine {
 
   _pickFigures(level, famous) {
     const m = MODES[this.mode];
+    // Mythical has no sixteenths, so its singing figures stretch over more levels (f.myth)
+    const min = (f) => (m.mythic && f.myth ? f.myth[0] : f.min);
+    const max = (f) => (m.mythic && f.myth ? f.myth[1] : f.max);
     const ok = FIGURES.filter((f) =>
-      level >= f.min && level <= f.max + 0 && (m.allow16 || !f.s16) && (!famous || f.keepsContour));
+      (m.mythic || !f.mythOnly) && level >= min(f) && level <= max(f) && (m.allow16 || !f.s16) && (!famous || f.keepsContour));
     const pool = ok.length ? ok : FIGURES.filter((f) => f.name === 'quarter');
-    const weight = (f) => (f.name === 'half' ? 0.5 : 1) + (level === f.max ? 0.6 : 0) + (f.s16 && level >= 5 ? 0.8 : 0);
+    const weight = (f) => (f.name === 'half' ? 0.5 : 1) + (level === max(f) ? 0.6 : 0) + (f.s16 && level >= 5 ? 0.8 : 0);
     const a = this.rng.weighted(pool, weight);
     const b = this.rng.chance(m.mix) ? this.rng.weighted(pool, weight) : a;
     return [a, b];
@@ -200,8 +250,10 @@ export class CanonEngine {
 
   _leftHand(bass, chords, level) {
     const r = this.rng;
+    // Mythical keeps the bass deep and solemn: octaves at the top instead of busy broken chords
     const style = level <= 1 ? 'ground'
       : level === 2 ? r.pick(['ground', 'rolled', 'octave'])
+      : MODES[this.mode].mythic ? (level === 3 ? r.pick(['rolled', 'octave', 'broken']) : r.pick(['octaveBroken', 'octave', 'octaveBroken']))
       : level === 3 ? r.pick(['broken', 'rolled', 'broken'])
       : r.pick(['broken', 'broken', 'octaveBroken']);
     const out = [];
@@ -266,19 +318,133 @@ export class CanonEngine {
     return out;
   }
 
-  _strings(chords, bass, level, mod, skel) {
+  // Which of Mythical's eleven extra voices are in, at the current energy.
+  _mythicActive() {
+    const at = MODES[this.mode].voiceAt;
+    return new Set(MYTHIC_VOICES.filter((v, i) =>
+      this.energy >= at[i] && (MYTHIC_STRINGS.has(v) ? this.strings : this.canon)));
+  }
+
+  // Mythical's piano voices. Three are true canon lines; the other four are cut from
+  // the current melody (its harmony, its lower octave, its echo, its harp roll). Every
+  // voice is checked against all the ones before it: no strong-beat semitone clashes,
+  // and never the same key struck twice at once.
+  _mythicPiano(active, rh, lh, skel, chords, mod) {
+    const parts = {};
+    const sounding = rh.slice();
+    const struck = rh.concat(lh);
+    const add = (voice, notes) => {
+      parts[voice] = notes;
+      for (const x of notes) { sounding.push(x); struck.push(x); }
+    };
+    // is this key already being struck (within a rolled chord's width)?
+    const taken = (t, m) => struck.some((y) => y.m === m && Math.abs(y.t - t) < 0.2);
+    const fits = (x) => {
+      if (x.m < 48 || x.m > 96 || taken(x.t, x.m)) return false;
+      const strong = Math.abs(x.t * 2 - Math.round(x.t * 2)) < 1e-6;
+      return !(strong && sounding.some((y) => y.t <= x.t + 1e-6 && x.t < y.t + y.d - 1e-6 && isSemitoneClash(y.m, x.m)));
+    };
+    const cut = (voice, notes) => add(voice, notes.filter(fits));
+    const s = skel.notes;
+    const beats = [0, 1, 2, 3, 4, 5, 6, 7];
+    // the nearest chord tone at or under m that nobody else is striking at t
+    const freeUnder = (t, m, pcs) => {
+      let c = pcs.includes(mod12(m)) ? m : chordToneBelow(m, pcs);
+      for (let i = 0; i < 2 && taken(t, c); i++) c = chordToneBelow(c, pcs);
+      return c;
+    };
+
+    if (active.has('c2')) add('c2', this._canonVoice(this.history[0], sounding.concat(lh), chords, -12, mod, 0.58));
+    if (active.has('c3')) add('c3', this._canonVoice(this.history[1], sounding.concat(lh), chords, 0, mod, 0.46));
+    if (active.has('c4')) add('c4', this._canonVoice(this.history[2], sounding.concat(lh), chords, 12, mod, 0.38));
+    if (active.has('alto')) {
+      cut('alto', beats.map((b) => ({ t: b, d: 0.98, m: freeUnder(b, chordToneBelow(s[b], chords[b].pcs), chords[b].pcs), v: 0.5 })));
+    }
+    if (active.has('tenor')) {
+      cut('tenor', beats.filter((b) => b % 2 === 0).map((b) => ({ t: b, d: 0.98, m: freeUnder(b, s[b] - 12, chords[b].pcs), v: 0.5 })));
+    }
+    if (active.has('echo')) {
+      cut('echo', beats.map((b) => ({ t: b + 0.5, d: 0.5, m: s[b] + 12, v: 0.4 })));
+    }
+    if (active.has('harp')) {
+      const notes = [];
+      for (const b of beats) {
+        const pcs = chords[b].pcs;
+        const hi = chordToneBelow(s[b], pcs);
+        const mid = chordToneBelow(hi, pcs);
+        const low = chordToneBelow(mid, pcs);
+        const wave = b % 2 === 0 ? [low, mid, hi] : [hi, mid, low]; // up one beat, down the next
+        wave.forEach((m, i) => notes.push({ t: b + 0.25 * (i + 1), d: 0.5, m, v: 0.4 + 0.04 * (b % 2 === 0 ? i : 2 - i) }));
+      }
+      cut('harp', notes);
+    }
+    return parts;
+  }
+
+  // Mythical's four singing string voices (the pad and the bass cello stay accompaniment).
+  _mythicStrings(active, skel, chords, mod, base) {
+    const parts = {};
+    const s = skel.notes;
+    const melTonic = tonicMidi(this.key) + 12;
+    const upTo = mod ? 6 : 8;
+    const line = (voice, inst, v, pitch, end = 8) => {
+      const notes = [];
+      for (let b = 0; b < end; b++) {
+        const m = pitch(b);
+        if (m != null) notes.push({ t: b, d: 1, m, v, inst, voice });
+      }
+      parts[voice] = legato(notes);
+    };
+    if (active.has('vln')) line('vln', 'violin', base + 0.12, (b) => s[b]);
+    if (active.has('desc')) {
+      // the famous line when the lead is off elsewhere; Pachelbel's descent, a sixth
+      // above, when the lead has the famous line itself
+      const theme = skel.type === 'famous' ? (b) => degToMidi(melTonic + 12, DESCENT[b]) : (b) => degToMidi(melTonic, FAMOUS[b]);
+      // (where the first violins already hold the same note, they carry the line)
+      line('desc', 'violin', base + 0.07, (b) => (theme(b) === s[b] && active.has('vln') ? null : theme(b)), upTo);
+    }
+    if (active.has('vln2')) {
+      const held = (b) => (parts.desc || []).filter((x) => x.t <= b && b < x.t + x.d).map((x) => x.m);
+      line('vln2', 'violin', base + 0.03, (b) => {
+        // an open sixth or so under the melody, a third when the descant has that note
+        const pcs = chords[b].pcs;
+        const third = chordToneBelow(s[b], pcs);
+        const sixth = chordToneBelow(third, pcs);
+        return [sixth, third, chordToneBelow(sixth, pcs)].find((m) => m >= 55 && !held(b).includes(m)) ?? null;
+      });
+    }
+    const src = this.history[0];
+    if (active.has('cel') && src) {
+      const shift = tonicMidi(this.key) - src.tonic - 12;
+      line('cel', 'cello', base + 0.1, (b) => {
+        if (src.pivotBeats.includes(b)) return null;
+        let m = src.skel[b] + shift;
+        while (m > 69) m -= 12;
+        return chords[b].pcs.includes(mod12(m)) ? m : null;
+      }, upTo);
+    }
+    return parts;
+  }
+
+  _strings(chords, bass, level, mod, skel, active) {
     const m = MODES[this.mode];
     const out = [];
     if (!this.strings || level < 2) return out;
     if (this.stringsRest > 0) { this.stringsRest--; return out; }
-    if (this.rng.chance(0.08)) { this.stringsRest = this.rng.int(1, 2); }
+    // (Mythical lets the strings rest only while the music is still quiet)
+    if (this.rng.chance(0.08) && !(m.mythic && this.energy >= 3.4)) { this.stringsRest = this.rng.int(1, 2); }
 
-    const base = m.violins ? 0.32 : 0.22;
+    const base = m.mythic ? 0.27 : m.violins ? 0.32 : 0.22;
+    const sung = m.mythic ? this._mythicStrings(active, skel, chords, mod, base) : null;
+    const taken = (b) => (sung ? Object.values(sung).flat().filter((x) => x.inst === 'violin' && x.t <= b && b < x.t + x.d).map((x) => x.m) : []);
     // pad: two inner chord tones per beat, held across repeated notes
     let prev = [nearestChordTone(62, chords[0].pcs), nearestChordTone(67, chords[0].pcs)];
     for (let b = 0; b < 8; b++) {
       const pcs = chords[b].pcs;
-      const cands = chordTonesIn(pcs, 57, 74).filter((c) => mod12(c) !== chords[b].rootPc || pcs.length > 3);
+      let cands = chordTonesIn(pcs, 57, 74).filter((c) => mod12(c) !== chords[b].rootPc || pcs.length > 3);
+      // keep the pad off the notes the singing violins hold
+      const free = cands.filter((c) => !taken(b).includes(c));
+      if (free.length >= 2) cands = free;
       const pick = (target) => cands.reduce((best, c) => (Math.abs(c - target) < Math.abs(best - target) ? c : best), cands[0]);
       const a = pick(prev[0]);
       let c2 = pick(prev[1]);
@@ -301,7 +467,9 @@ export class CanonEngine {
     }
     // violins sing the famous line in Bright peaks
     const melTonic = tonicMidi(this.key) + 12;
-    if (m.violins && level >= 4) {
+    if (sung) {
+      for (const part of Object.values(sung)) out.push(...part);
+    } else if (m.violins && level >= 4) {
       for (let b = 0; b < (mod ? 6 : 8); b++) {
         out.push({ t: b, d: 1, m: degToMidi(melTonic, FAMOUS[b]), v: base + 0.12, inst: 'violin', voice: 'vln' });
       }
@@ -348,11 +516,16 @@ export class CanonEngine {
     let c4 = [];
     let c5 = [];
     let c6 = [];
-    if (nVoices >= 2) c2 = this._canonVoice(this.history[0], rh, chords, -12, mod, 0.62);
-    if (nVoices >= 3) c3 = this._canonVoice(this.history[1], rh.concat(c2), chords, 0, mod, 0.5);
-    if (nVoices >= 4) c4 = this._canonVoice(this.history[2], rh.concat(c2, c3), chords, 12, mod, 0.42);
-    if (nVoices >= 5) c5 = this._canonVoice(this.history[3], rh.concat(c2, c3, c4), chords, -12, mod, 0.36);
-    if (nVoices >= 6) c6 = this._canonVoice(this.history[4], rh.concat(c2, c3, c4, c5), chords, 12, mod, 0.32);
+    // Mythical builds its own twelve; the other modes stack canon replays
+    const active = m.mythic ? this._mythicActive() : null;
+    const mythic = m.mythic ? this._mythicPiano(active, rh, lh.notes, skel, chords, mod) : null;
+    if (!mythic) {
+      if (nVoices >= 2) c2 = this._canonVoice(this.history[0], rh, chords, -12, mod, 0.62);
+      if (nVoices >= 3) c3 = this._canonVoice(this.history[1], rh.concat(c2), chords, 0, mod, 0.5);
+      if (nVoices >= 4) c4 = this._canonVoice(this.history[2], rh.concat(c2, c3), chords, 12, mod, 0.42);
+      if (nVoices >= 5) c5 = this._canonVoice(this.history[3], rh.concat(c2, c3, c4), chords, -12, mod, 0.36);
+      if (nVoices >= 6) c6 = this._canonVoice(this.history[4], rh.concat(c2, c3, c4, c5), chords, 12, mod, 0.32);
+    }
 
     // optional backing track: the Canon's bassline on cello, one octave above the
     // piano's left hand (so it is heard as its own part, even on laptop speakers),
@@ -363,7 +536,7 @@ export class CanonEngine {
       const e = this.energy;
       for (let b = 0; b < 8; b++) {
         const mid = bass[b] + 12 <= 64 ? bass[b] + 12 : bass[b];
-        if (this.mode === 'calm') {
+        if (this.mode === 'calm' || m.mythic) {
           backing.push({ t: b, d: 1, m: mid, v: 0.6 + 0.05 * e, inst: 'backing', voice: 'backing' });
         } else {
           backing.push({ t: b, d: 0.5, m: mid, v: 0.68 + 0.05 * e, inst: 'backing', voice: 'backing' });
@@ -374,10 +547,10 @@ export class CanonEngine {
     }
 
 
-    const strings = this._strings(chords, bass, level, mod, skel);
+    const strings = this._strings(chords, bass, level, mod, skel, active);
 
     // tempo shaping: beat length multipliers (phrase-end ritardando, breath before a key change)
-    const beats = new Array(8).fill(1).map(() => (this.mode === 'calm' ? 1 + r.range(-0.025, 0.025) : 1 + r.range(-0.012, 0.012)));
+    const beats = new Array(8).fill(1).map(() => (this.mode === 'calm' || m.mythic ? 1 + r.range(-0.025, 0.025) : 1 + r.range(-0.012, 0.012)));
     if (this.index % 4 === 3) beats[7] *= 1.15;
     if (mod) { beats[6] *= 1.1; beats[7] *= 1.4; }
 
@@ -403,8 +576,15 @@ export class CanonEngine {
     push(c4, 'piano', 'c4', 1);
     push(c5, 'piano', 'c5', 1);
     push(c6, 'piano', 'c6', 1);
+    if (mythic) {
+      // the more piano voices, the lighter each one plays, so the peak is wide rather than loud
+      const trim = 1 / (1 + 0.1 * Object.keys(mythic).length);
+      for (const [voice, part] of Object.entries(mythic)) push(part, 'piano', voice, trim);
+    }
     for (const x of backing) notes.push({ ...x, v: Math.min(1, x.v), hum: r.range(-0.008, 0.008) });
-    for (const s of strings) notes.push({ ...s, v: Math.min(1, s.v * (0.7 + 0.1 * this.energy)), hum: r.range(-0.015, 0.015) });
+    // (in Mythical the string section shares its level out as more of it sings)
+    const sTrim = mythic ? 1 / (1 + 0.12 * MYTHIC_VOICES.filter((v) => MYTHIC_STRINGS.has(v) && strings.some((x) => x.voice === v)).length) : 1;
+    for (const s of strings) notes.push({ ...s, v: Math.min(1, s.v * (0.7 + 0.1 * this.energy) * sTrim), hum: r.range(-0.015, 0.015) });
 
     const cycle = {
       index: this.index,
@@ -413,7 +593,8 @@ export class CanonEngine {
       mode: this.mode,
       energy: this.energy,
       level,
-      voices: 1 + [c2, c3, c4, c5, c6].filter((c) => c.length).length,
+      voices: 1 + [c2, c3, c4, c5, c6].filter((c) => c.length).length
+        + (mythic ? MYTHIC_VOICES.filter((v) => (mythic[v] || strings.filter((x) => x.voice === v)).length).length : 0),
       famous: skel.type === 'famous',
       skeleton: skel.type,
       figures: figs.map((f) => f.name),
@@ -426,7 +607,7 @@ export class CanonEngine {
     };
 
     // remember this line for the canon
-    this.history.unshift({ notes: rh, tonic: tonicMidi(this.key), pivotBeats: mod ? [6, 7] : [] });
+    this.history.unshift({ notes: rh, skel: skel.notes, tonic: tonicMidi(this.key), pivotBeats: mod ? [6, 7] : [] });
     this.history.length = Math.min(this.history.length, 5);
 
     // advance key
