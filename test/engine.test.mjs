@@ -289,6 +289,57 @@ test('mythical: the peak is busier than Extreme but no louder, and is reached by
   }
 });
 
+test('mythical: at the peak the top octave is heard over the low end at least as well as in Extreme', () => {
+  const mean = (a) => a.reduce((s, x) => s + x, 0) / a.length;
+  const balance = (mode, top) => {
+    const notes = run({ seed: 21, mode }, 1000).filter((c) => c.voices === top).flatMap((c) => c.notes);
+    const piano = notes.filter((n) => n.inst === 'piano');
+    const v = (pick) => mean(piano.filter(pick).map((n) => n.v));
+    const sum = (a) => a.reduce((s, n) => s + n.v, 0);
+    return {
+      lh: v((n) => n.voice === 'lh'),
+      top: v((n) => n.m >= 84), // C6 and up
+      voice: (name) => v((n) => n.voice === name),
+      low: sum(notes.filter((n) => n.m < 60)) / sum(notes), // share of the level under middle C
+    };
+  };
+  const my = balance('mythical', 12);
+  const ex = balance('extreme', 6);
+  assert.ok(my.top >= 0.2, `top octave level ${my.top}`);
+  assert.ok(my.voice('echo') >= 0.18 && my.voice('c4') >= 0.18, `bells ${my.voice('echo')}, top canon line ${my.voice('c4')}`);
+  assert.ok(my.lh / my.top <= ex.lh / ex.top, `left hand over top octave: ${my.lh / my.top} vs Extreme's ${ex.lh / ex.top}`);
+  assert.ok(my.low < ex.low, `share of the level under middle C: ${my.low} vs Extreme's ${ex.low}`);
+  // the left hand gives way as the voices gather, and has its full weight when it is alone
+  // (the ground note on each bar's first beat, with the energy's own loudness taken out)
+  const ground = (opts) => {
+    const out = [];
+    for (const c of run({ seed: 21, mode: 'mythical', ...opts }, 600)) {
+      if (c.energy < 4.6) continue;
+      for (const n of c.notes) if (n.voice === 'lh' && n.t % 2 < 1e-6 && n.m === c.bass[n.t]) out.push(n.v / (0.3 + 0.09 * c.energy));
+    }
+    return mean(out);
+  };
+  const full = ground({ canon: false });
+  const peak = ground({});
+  assert.ok(peak < full * 0.8 && peak > full * 0.7, `left hand under all twelve: ${peak} of ${full} alone`);
+});
+
+test('audio: the left hand and the cellos are routed apart, and the hall takes less of them', async () => {
+  const { samplerFor, HALL_LOW } = await import('../src/audio/audio.js');
+  assert.ok(HALL_LOW > 0 && HALL_LOW <= 0.5);
+  assert.equal(samplerFor({ inst: 'piano', voice: 'lh' }), 'pianoLow');
+  for (const voice of ['rh', 'c2', 'c3', 'c4', 'alto', 'tenor', 'echo', 'harp']) assert.equal(samplerFor({ inst: 'piano', voice }), 'piano');
+  for (const inst of ['violin', 'cello', 'backing']) assert.equal(samplerFor({ inst, voice: 'x' }), inst);
+  const { readFile } = await import('node:fs/promises');
+  const src = await readFile(new URL('../src/audio/audio.js', import.meta.url), 'utf8');
+  // only the upper parts feed the hall directly; the low buses go through the HALL_LOW gain
+  assert.match(src, /for \(const bus of \[this\.pianoBus, this\.stringBus\]\) bus\.connect\(this\.hallSend\)/);
+  assert.match(src, /for \(const bus of \[this\.pianoLowBus, this\.celloBus, this\.backingBus\]\) bus\.connect\(this\.hallLow\)/);
+  assert.match(src, /this\.hallLow = new Tone\.Gain\(HALL_LOW\)\.connect\(this\.hallSend\)/);
+  // every sampler the scheduler can name exists
+  for (const name of ['piano', 'pianoLow', 'violin', 'cello', 'backing']) assert.ok(src.includes(`this.${name} = `), name);
+});
+
 test('mythical: canon and strings switches still thin it out', () => {
   const noCanon = run({ seed: 21, mode: 'mythical', canon: false }, 400);
   assert.ok(noCanon.every((c) => !c.notes.some((n) => n.inst === 'piano' && n.voice !== 'rh' && n.voice !== 'lh')));

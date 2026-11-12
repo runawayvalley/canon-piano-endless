@@ -3,7 +3,7 @@
 // t/d in beats (0 ≤ t < 1 within the beat), m = MIDI, v = relative velocity.
 // min/max: the energy levels a figure belongs to; myth: its levels in Mythical, which
 // keeps its sixteenths for the peak and so lets the singing figures reach further up.
-import { scaleStep, chordToneAbove, chordToneBelow, mod12 } from './theory.js?v=13';
+import { scaleStep, chordToneAbove, chordToneBelow, mod12 } from './theory.js?v=14';
 
 const n = (t, d, m, v = 1) => ({ t, d, m, v });
 

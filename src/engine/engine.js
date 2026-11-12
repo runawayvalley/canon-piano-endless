@@ -1,12 +1,12 @@
 // The endless Canon engine. Pure JS, no audio: each call to next() returns one
 // cycle (2 bars = 8 chords = 8 beats) of note events. Same seed → same music.
-import { makeRng } from './rng.js?v=13';
+import { makeRng } from './rng.js?v=14';
 import {
   HOME, KEY_NAMES, GROUND, FAMOUS, DESCENT, mod12, tonicMidi, degToMidi,
   diatonicChord, pivotChord, nearestChordTone, chordTonesIn, chordToneAbove,
   chordToneBelow, isSemitoneClash, scaleStep,
-} from './theory.js?v=13';
-import { FIGURES } from './patterns.js?v=13';
+} from './theory.js?v=14';
+import { FIGURES } from './patterns.js?v=14';
 
 export const MODES = {
   calm: {
@@ -63,6 +63,12 @@ export const MODES = {
 // from the peak the three canon lines quicken by themselves: they replay a lead that runs)
 export const MYTHIC_VOICES = ['vln', 'c2', 'harp', 'cel', 'alto', 'c3', 'desc', 'echo', 'vln2', 'c4', 'tenor'];
 const MYTHIC_STRINGS = new Set(['vln', 'cel', 'desc', 'vln2']);
+// Balance at the peak. The extra piano voices share their level out (see next()), which
+// alone would leave the two voices that live in the top octave too faint to hear over
+// everything below them, so those two get some of it back; and the left hand, which
+// rolls through deep octaves there, gives way a little as the voices gather.
+const MYTHIC_LIFT = { echo: 1.5, c4: 1.5 };
+const MYTHIC_LH_YIELD = 0.048; // per extra piano voice: about a quarter lighter under all seven
 
 // Join repeated notes of a string line into one long bow.
 function legato(notes) {
@@ -642,7 +648,8 @@ export class CanonEngine {
     push(rh, 'piano', 'rh', 1.05);
     // with the backing on, the cello takes over any left-hand note it would double
     const backKey = new Set(backing.map((x) => `${x.t}:${x.m}`));
-    push(backing.length ? lh.notes.filter((x) => !backKey.has(`${x.t}:${x.m}`)) : lh.notes, 'piano', 'lh', 0.85);
+    const extra = mythic ? Object.keys(mythic).length : 0;
+    push(backing.length ? lh.notes.filter((x) => !backKey.has(`${x.t}:${x.m}`)) : lh.notes, 'piano', 'lh', 0.85 / (1 + MYTHIC_LH_YIELD * extra));
     push(c2, 'piano', 'c2', 1);
     push(c3, 'piano', 'c3', 1);
     push(c4, 'piano', 'c4', 1);
@@ -650,8 +657,8 @@ export class CanonEngine {
     push(c6, 'piano', 'c6', 1);
     if (mythic) {
       // the more piano voices, the lighter each one plays, so the peak is wide rather than loud
-      const trim = 1 / (1 + 0.1 * Object.keys(mythic).length);
-      for (const [voice, part] of Object.entries(mythic)) push(part, 'piano', voice, trim);
+      const trim = 1 / (1 + 0.1 * extra);
+      for (const [voice, part] of Object.entries(mythic)) push(part, 'piano', voice, trim * (MYTHIC_LIFT[voice] || 1));
     }
     for (const x of backing) notes.push({ ...x, v: Math.min(1, x.v), hum: r.range(-0.008, 0.008) });
     // (in Mythical the string section shares its level out as more of it sings)

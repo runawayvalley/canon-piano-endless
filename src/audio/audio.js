@@ -1,7 +1,7 @@
 // Audio: sampled piano + soft strings (Tone.js), and a look-ahead scheduler that
 // asks the engine for one cycle at a time and places every note on the audio clock.
 /* global Tone */
-import { NOTE_NAMES } from '../engine/theory.js?v=13';
+import { NOTE_NAMES } from '../engine/theory.js?v=14';
 
 const SALAMANDER = 'https://tonejs.github.io/audio/salamander/';
 const PIANO_NOTES = ['A1', 'C2', 'Ds2', 'Fs2', 'A2', 'C3', 'Ds3', 'Fs3', 'A3', 'C4', 'Ds4', 'Fs4',
@@ -12,6 +12,10 @@ const CELLO_NOTES = ['C2', 'E2', 'G2', 'B2', 'D3', 'F3', 'A3', 'C4', 'E4', 'G4',
 const toToneName = (n) => n.replace('s', '#');
 const urlMap = (notes, file) => Object.fromEntries(notes.map((n) => [toToneName(n), file(n)]));
 export const midiName = (m) => `${NOTE_NAMES[m % 12].replace('s', '#')}${Math.floor(m / 12) - 1}`;
+// How much of the low parts (piano left hand, cellos) the hall reverb takes, next to 1 for the rest.
+export const HALL_LOW = 0.4;
+// Which sampler plays a note: the piano's left hand has its own (see init).
+export const samplerFor = (n) => (n.inst === 'piano' && n.voice === 'lh' ? 'pianoLow' : n.inst);
 
 export class CanonAudio {
   constructor(engine, { onCycle, onNote } = {}) {
@@ -44,19 +48,27 @@ export class CanonAudio {
     this.reverbSend = new Tone.Gain(0.22).connect(this.reverb);
     this.reverb.connect(this.master);
 
+    // The low parts (piano left hand, cellos) have buses of their own. They sound exactly
+    // as if they shared the others': the split only lets the hall take less of them.
     this.pianoBus = new Tone.Gain(1).connect(this.master);
     this.pianoBus.connect(this.reverbSend);
+    this.pianoLowBus = new Tone.Gain(1).connect(this.master);
+    this.pianoLowBus.connect(this.reverbSend);
     this.stringBus = new Tone.Gain(this.stringsVolume).connect(this.master);
     this.stringSend = new Tone.Gain(0.5).connect(this.reverb);
     this.stringBus.connect(this.stringSend);
+    this.celloBus = new Tone.Gain(this.stringsVolume).connect(this.master);
+    this.celloBus.connect(this.stringSend);
     // backing slider 0..1 maps to gain 0..1.6 so full volume clearly stands out
     this.backingBus = new Tone.Gain(this.backingVolume * 1.6).connect(this.master);
     this.backingSend = new Tone.Gain(0.25).connect(this.reverb);
     this.backingBus.connect(this.backingSend);
 
     onProgress('Loading piano…');
-    this.piano = await loadSampler(urlMap(PIANO_NOTES, (n) => `${n}.mp3`), SALAMANDER, { release: 1.2 });
-    this.piano.connect(this.pianoBus);
+    // one set of recordings, two pianos: the second plays only the left hand
+    const keys = await loadBuffers(urlMap(PIANO_NOTES, (n) => `${n}.mp3`), SALAMANDER);
+    this.piano = new Tone.Sampler({ urls: keys, release: 1.2 }).connect(this.pianoBus);
+    this.pianoLow = new Tone.Sampler({ urls: keys, release: 1.2 }).connect(this.pianoLowBus);
     this.ready = true;
 
     // strings load in the background so the first sound stays fast
@@ -67,7 +79,7 @@ export class CanonAudio {
       loadSampler(urlMap(CELLO_NOTES, (n) => `cello_${n}.mp3`), base, { attack: 0.02, release: 0.45 }),
     ]).then(([violin, cello, backing]) => {
       this.violin = violin; this.cello = cello; this.backing = backing;
-      violin.connect(this.stringBus); cello.connect(this.stringBus); backing.connect(this.backingBus);
+      violin.connect(this.stringBus); cello.connect(this.celloBus); backing.connect(this.backingBus);
       this.stringsReady = true;
     }).catch((e) => console.warn('strings failed to load', e));
   }
@@ -102,11 +114,16 @@ export class CanonAudio {
 
   setVolume(v) { this.volume = v; if (this.playing) this.master.gain.rampTo(v, 0.1); }
   setBackingVolume(v) { this.backingVolume = v; if (this.backingBus) this.backingBus.gain.rampTo(v * 1.6, 0.2); }
-  setStringsVolume(v) { this.stringsVolume = v; if (this.stringBus) this.stringBus.gain.rampTo(v, 0.2); }
+  setStringsVolume(v) {
+    this.stringsVolume = v;
+    if (this.stringBus) { this.stringBus.gain.rampTo(v, 0.2); this.celloBus.gain.rampTo(v, 0.2); }
+  }
 
   // A second, much longer reverb for modes that want a vast space (Mythical): amount is
   // the send level, 0 for none. It is only built the first time a mode asks for it, and
-  // fades in and out over a couple of seconds so switching modes never jolts.
+  // fades in and out over a couple of seconds so switching modes never jolts. The low
+  // parts go into it at HALL_LOW of the level of the rest: low notes ring longest, and a
+  // hall full of them covers the high voices.
   setHall(amount) {
     this.hallAmount = amount;
     if (!this.master) return;
@@ -116,7 +133,9 @@ export class CanonAudio {
     this.hall.generate().then(() => {
       this.hallSend = new Tone.Gain(0).connect(this.hall);
       this.hall.connect(this.master);
-      for (const bus of [this.pianoBus, this.stringBus, this.backingBus]) bus.connect(this.hallSend);
+      this.hallLow = new Tone.Gain(HALL_LOW).connect(this.hallSend);
+      for (const bus of [this.pianoBus, this.stringBus]) bus.connect(this.hallSend);
+      for (const bus of [this.pianoLowBus, this.celloBus, this.backingBus]) bus.connect(this.hallLow);
       this.hallSend.gain.rampTo(this.hallAmount, 2.5);
     }).catch((e) => console.warn('hall reverb failed', e));
   }
@@ -136,7 +155,7 @@ export class CanonAudio {
     let i = 0;
     while (i < this.queue.length && this.queue[i].time < until) {
       const q = this.queue[i++];
-      const inst = { piano: this.piano, violin: this.violin, cello: this.cello, backing: this.backing }[q.inst];
+      const inst = { piano: this.piano, pianoLow: this.pianoLow, violin: this.violin, cello: this.cello, backing: this.backing }[q.inst];
       if (!inst) continue; // strings still loading
       inst.triggerAttackRelease(q.name, q.hold, Math.max(this.now + 0.005, q.time), q.v);
     }
@@ -161,13 +180,23 @@ export class CanonAudio {
       const dur = Math.max(0.05, timeAt(n.t + n.d) - timeAt(n.t));
       // piano: a touch of pedal; strings: legato overlap
       const hold = n.inst === 'piano' ? dur * 1.15 : dur + 0.12;
-      this.queue.push({ inst: n.inst, name: midiName(n.m), hold, time, v: n.v });
+      this.queue.push({ inst: samplerFor(n), name: midiName(n.m), hold, time, v: n.v });
       this.onNote({ ...n, time, dur });
     }
     this.queue.sort((a, b) => a.time - b.time);
     this.onCycle({ ...cycle, startTime: this.nextCycleTime, endTime: end });
     this.nextCycleTime = end;
   }
+}
+
+// Load recordings once, to be shared by several samplers: { note name: buffer }.
+function loadBuffers(urls, baseUrl) {
+  return new Promise((resolve, reject) => {
+    const all = new Tone.ToneAudioBuffers({
+      urls, baseUrl, onerror: reject,
+      onload: () => resolve(Object.fromEntries(Object.keys(urls).map((k) => [k, all.get(k)]))),
+    });
+  });
 }
 
 function loadSampler(urls, baseUrl, opts) {
